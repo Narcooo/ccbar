@@ -1,0 +1,34 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#3be623"/>
+      <stop offset="30%" stop-color="#9de623"/>
+      <stop offset="55%" stop-color="#e6ce23"/>
+      <stop offset="80%" stop-color="#e69d23"/>
+      <stop offset="100%" stop-color="#e63b23"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#3be623"/>
+      <stop offset="100%" stop-color="#6ce623"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" stroke="#30363d" stroke-width="3" fill="none"/>
+
+  <!-- Top bar: long, ~85% fill -->
+  <rect x="80" y="148" width="352" height="28" rx="14" fill="#21262d"/>
+  <rect x="80" y="148" width="300" height="28" rx="14" fill="url(#bar1)"/>
+
+  <!-- Bottom bar: short, ~30% fill -->
+  <rect x="80" y="204" width="352" height="28" rx="14" fill="#21262d"/>
+  <rect x="80" y="204" width="110" height="28" rx="14" fill="url(#bar2)"/>
+
+  <!-- Dollar sign -->
+  <text x="256" y="370" text-anchor="middle" fill="#ffd23c" font-family="'SF Mono','Fira Code','Menlo','Consolas',monospace" font-size="120" font-weight="bold">$</text>
+</svg>
