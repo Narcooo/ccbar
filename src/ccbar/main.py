@@ -412,6 +412,7 @@ def scan_tokens():
         "week_cr_tok": 0, "week_in_tok": 0,
         "month_tok": 0, "month_cost": 0.0, "month_ccost": 0.0,
         "all_tok": 0, "all_cost": 0.0, "all_ccost": 0.0,
+        "all_cr_tok": 0, "all_in_tok": 0,
     }
     st = {**ZERO, "projects": {}}
 
@@ -466,6 +467,8 @@ def scan_tokens():
                     d["all_tok"] += tok
                     d["all_cost"] += base
                     d["all_ccost"] += cr
+                    d["all_cr_tok"] += cr_tok
+                    d["all_in_tok"] += in_tok
                 if ts >= cuts["month"]:
                     for d in (st, p):
                         d["month_tok"] += tok
@@ -643,16 +646,20 @@ def render_session(ctx):
 
 
 def render_total(ctx):
-    """All-time project cost + working directory path."""
+    """All-time: tokens + ♻cache + cost + path."""
     gt, gp = ctx["g"], ctx["gp"]
     cwd = ctx["cwd"]
     gap = _label_gap(ctx, 5)  # "total" = 5
-    # Project all-time cost if available, otherwise global all-time cost
+    # Use project stats if available, otherwise global
     if gp("all_cost") + gp("all_ccost") > 0:
+        tok, cr, in_tok = gp("all_tok"), gp("all_cr_tok"), gp("all_in_tok")
         cost = gp("all_cost") + gp("all_ccost")
     else:
+        tok, cr, in_tok = gt("all_tok"), gt("all_cr_tok"), gt("all_in_tok")
         cost = gt("all_cost") + gt("all_ccost")
-    left = f"{_c('total')}total{R}{gap}{_c('cost')}{fcost(cost)}{R}"
+    left = (f"{_c('total')}total{R}{gap}"
+            f"{_tok_cache(tok, cr, in_tok, pct=True)} "
+            f"{_c('cost')}{fcost(cost)}{R}")
     short = shorten_path(cwd)
     right = f"{_c('dim')}{short}{R}"
     return left, right
@@ -693,14 +700,24 @@ def render_today(ctx):
 
 
 def render_history(ctx):
-    """Week + month costs in one column."""
-    gt = ctx["g"]
+    """Week tokens+cost · month tokens+cost, with proj breakdown."""
+    gt, gp = ctx["g"], ctx["gp"]
     gap = _label_gap(ctx, 4)  # "week" = 4
-    w_cost = gt("week_cost") + gt("week_ccost")
-    m_cost = gt("month_cost") + gt("month_ccost")
-    left = (f"{_c('week')}week{R}{gap}{_c('cost')}{fcost(w_cost)}{R}"
-            f" {_c('dim')}·{R} "
-            f"{_c('month')}month{R} {_c('cost')}{fcost(m_cost)}{R}")
+    # Week: tokens + cost [› proj cost]
+    left = (f"{_c('week')}week{R}{gap}"
+            f"{_c('tok')}{fmt(gt('week_tok'))}{R} "
+            f"{_c('cost')}{fcost(gt('week_cost') + gt('week_ccost'))}{R}")
+    if gp("week_cost") + gp("week_ccost") > 0:
+        left += (f" {_c('dim')}›{R}"
+                 f" {_c('cost')}{fcost(gp('week_cost') + gp('week_ccost'))}{R}")
+    # Month: tokens + cost [› proj cost]
+    left += (f" {_c('dim')}·{R} "
+             f"{_c('month')}month{R} "
+             f"{_c('tok')}{fmt(gt('month_tok'))}{R} "
+             f"{_c('cost')}{fcost(gt('month_cost') + gt('month_ccost'))}{R}")
+    if gp("month_cost") + gp("month_ccost") > 0:
+        left += (f" {_c('dim')}›{R}"
+                 f" {_c('cost')}{fcost(gp('month_cost') + gp('month_ccost'))}{R}")
     return left, ""
 
 
