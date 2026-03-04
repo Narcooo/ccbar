@@ -3,6 +3,8 @@
 
 Zero dependencies. Pure Python stdlib. Cross-session cost history with
 per-model pricing, streaming dedup, cache hit rate, and OAuth quota bars.
+
+Layout is configurable via ~/.config/ccbar.json or CCBAR_LAYOUT env var.
 """
 
 import json
@@ -30,6 +32,14 @@ TOKEN_TTL = 60   # JSONL scan interval (seconds)
 
 HOME = os.path.expanduser("~")
 PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
+CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
+
+# ── Default layout: 2 rows × 3 items ──
+# Available items: 5h, 7d, model, today, week, month, session, path
+DEFAULT_LAYOUT = [
+    ["5h", "7d", "model"],
+    ["today", "week", "month"],
+]
 
 # ── Per-model pricing (USD per token) ──
 # in=input, out=output, cc=cache_creation, cr=cache_read
@@ -43,7 +53,7 @@ PRICING = {
 DFLT = {"in": 3/1e6, "out": 15/1e6, "cc": 3.75/1e6, "cr": 0.3/1e6}
 
 # ── True-color palette ──
-# Edit these to customize your statusline colors.
+# Edit these or override in ~/.config/ccbar.json {"colors": {"cost": [255,0,0]}}
 COLORS = {
     "sep":    (60, 60, 70),      # separator │
     "label":  (120, 160, 220),   # "5h" "7d" labels (steel blue)
@@ -62,16 +72,22 @@ COLORS = {
     "tleft":  (180, 160, 220),   # time-left countdown
     "paren":  (70, 70, 80),      # parentheses
     "empty":  (45, 45, 45),      # empty bar segments
+    "sess":   (200, 180, 255),   # session label (light purple)
+    "path":   (160, 180, 200),   # path label (steel)
+    "lines+": (100, 200, 120),   # lines added (green)
+    "lines-": (200, 100, 100),   # lines removed (red)
 }
+
 
 def rgb(r, g, b):
     return f"\033[1;38;2;{r};{g};{b}m"
 
-def c(name):
+
+def _c(name):
     return rgb(*COLORS[name])
 
+
 R = "\033[0m"
-SEP = f" {c('sep')}│{R} "
 
 
 def pct_color(pct):
@@ -125,11 +141,11 @@ def time_left(resets_at_str):
         left = datetime.fromisoformat(resets_at_str) - datetime.now(timezone.utc)
         secs = int(left.total_seconds())
         if secs <= 0:
-            return f"{c('tleft')}resetting{R}"
+            return f"{_c('tleft')}resetting{R}"
         h, m = secs // 3600, (secs % 3600) // 60
         if h > 24:
-            return f"{c('tleft')}{h // 24}d{h % 24}h{R}"
-        return f"{c('tleft')}{h}h{m:02d}m{R}"
+            return f"{_c('tleft')}{h // 24}d{h % 24}h{R}"
+        return f"{_c('tleft')}{h}h{m:02d}m{R}"
     except (ValueError, TypeError):
         return ""
 
@@ -141,6 +157,35 @@ def vlen(s):
 
 def pad(s, w):
     return s + ' ' * max(0, w - vlen(s))
+
+
+def shorten_path(p, max_len=25):
+    """Shorten path: /Users/foo/projects/bar → ~/projects/bar or .../bar."""
+    if not p:
+        return ""
+    home = os.path.expanduser("~")
+    if p.startswith(home):
+        p = "~" + p[len(home):]
+    if len(p) <= max_len:
+        return p
+    parts = p.split(os.sep)
+    # Keep last 2 components
+    short = os.sep.join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+    return f"…/{short}" if len(short) < len(p) else p[:max_len - 1] + "…"
+
+
+def fmt_duration(ms):
+    """Format milliseconds to human-readable duration."""
+    if not ms or ms <= 0:
+        return ""
+    secs = int(ms / 1000)
+    if secs < 60:
+        return f"{secs}s"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins}m"
+    hours = mins // 60
+    return f"{hours}h{mins % 60}m"
 
 
 # ═══════════════════════════════════════
@@ -163,8 +208,40 @@ def gradient_bar(pct, width=24):
             f = (t - 0.5) / 0.5
             r, g, b = 255, int(220 - 170 * f), int(40 * (1 - f))
         bar += f"\033[38;2;{r};{g};{b}m━"
-    bar += f"{c('empty')}{'─' * empty}{R}"
+    bar += f"{_c('empty')}{'─' * empty}{R}"
     return bar
+
+
+# ═══════════════════════════════════════
+#  Config
+# ═══════════════════════════════════════
+
+def load_config():
+    """Load layout config: CCBAR_LAYOUT env → ~/.config/ccbar.json → defaults."""
+    # 1. Env var: "5h,7d,model|today,week,month"
+    env = os.environ.get("CCBAR_LAYOUT", "").strip()
+    if env:
+        return {
+            "rows": [row.split(",") for row in env.split("|")],
+        }
+
+    # 2. Config file
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                cfg = json.load(f)
+            # Merge colors if provided
+            if "colors" in cfg:
+                for k, v in cfg["colors"].items():
+                    if k in COLORS and isinstance(v, (list, tuple)) and len(v) == 3:
+                        COLORS[k] = tuple(v)
+            if "rows" in cfg:
+                return cfg
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # 3. Default
+    return {"rows": DEFAULT_LAYOUT}
 
 
 # ═══════════════════════════════════════
@@ -173,12 +250,10 @@ def gradient_bar(pct, width=24):
 
 def get_oauth_token():
     """Get OAuth token: env var → macOS keychain → None."""
-    # 1. Environment variable (works everywhere)
     token = os.environ.get("CLAUDE_OAUTH_TOKEN", "").strip()
     if token:
         return token
 
-    # 2. macOS Keychain fallback
     try:
         raw = subprocess.check_output(
             ["security", "find-generic-password",
@@ -204,7 +279,6 @@ def fetch_quota():
     if not token:
         return None
 
-    # Use urllib.request (stdlib) instead of curl subprocess
     try:
         import urllib.request
         req = urllib.request.Request(
@@ -285,7 +359,6 @@ def scan_tokens():
             except OSError:
                 continue
 
-            # Collect per-message: last entry wins (dedup streaming chunks)
             msgs = {}
             try:
                 with open(fp, "r", errors="ignore") as f:
@@ -304,12 +377,10 @@ def scan_tokens():
                             continue
                         if entry.get("type") == "progress":
                             continue
-                        # Last entry per msg_id has final output_tokens
                         msgs[msg_id] = (msg, usage, ts_str)
             except OSError:
                 continue
 
-            # Accumulate deduplicated messages
             for msg, usage, ts_str in msgs.values():
                 try:
                     ts = datetime.fromisoformat(
@@ -380,13 +451,154 @@ def proj_stats(tokens, pk):
 
 
 # ═══════════════════════════════════════
+#  Item renderers
+# ═══════════════════════════════════════
+#
+# Each returns (left_str, right_str).
+# "right" is used for right-aligned countdown timers (empty for most items).
+
+def render_5h(ctx):
+    """5-hour quota bar + countdown."""
+    quota, bw = ctx["quota"], ctx["bw"]
+    if quota and quota.get("five_hour"):
+        h5 = quota["five_hour"]
+        pct = int(h5.get("utilization", 0) or 0)
+        left = (f"{_c('label')}5h{R} {gradient_bar(pct, bw)} "
+                f"{pct_color(pct)}{pct:2d}%{R}")
+        right = time_left(h5.get("resets_at"))
+    else:
+        left = f"{_c('label')}5h{R} {_c('dim')}--{R}"
+        right = ""
+    return left, right
+
+
+def render_7d(ctx):
+    """7-day quota bar + countdown + per-model breakdown."""
+    quota, bw = ctx["quota"], ctx["bw"]
+    if quota and quota.get("seven_day"):
+        d7 = quota["seven_day"]
+        pct = int(d7.get("utilization", 0) or 0)
+        left = (f"{_c('label')}7d{R} {gradient_bar(pct, bw)} "
+                f"{pct_color(pct)}{pct:2d}%{R}")
+        for key, lb in [("seven_day_opus", "op"), ("seven_day_sonnet", "sn")]:
+            m = quota.get(key)
+            if m and (m.get("utilization") or 0) > 0:
+                left += f" {_c('dim')}{lb}:{int(m['utilization'])}%{R}"
+        right = time_left(d7.get("resets_at"))
+    else:
+        left = f"{_c('label')}7d{R} {_c('dim')}--{R}"
+        right = ""
+    return left, right
+
+
+def render_model(ctx):
+    """Model name + context % + clock."""
+    model = ctx["model"]
+    ctx_pct = ctx["ctx_pct"]
+    now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
+    left = (f"{_c('model')}{model}{R} "
+            f"{ctx_color(ctx_pct)}ctx {ctx_pct}%{R} "
+            f"{_c('time')}{now_str}{R}")
+    return left, ""
+
+
+def render_session(ctx):
+    """Session cost + duration + lines changed."""
+    cost_data = ctx["data"].get("cost", {})
+    sess_cost = cost_data.get("total_cost_usd", 0) or 0
+    dur_ms = cost_data.get("total_duration_ms", 0) or 0
+    lines_add = cost_data.get("total_lines_added", 0) or 0
+    lines_rm = cost_data.get("total_lines_removed", 0) or 0
+
+    s = f"{_c('sess')}sess{R} {_c('cost')}{fcost(sess_cost)}{R}"
+    dur = fmt_duration(dur_ms)
+    if dur:
+        s += f" {_c('dim')}{dur}{R}"
+    if lines_add or lines_rm:
+        s += f" {_c('lines+')}+{lines_add}{R}{_c('dim')}/{R}{_c('lines-')}-{lines_rm}{R}"
+    return s, ""
+
+
+def render_path(ctx):
+    """Current working directory (shortened)."""
+    cwd = ctx["cwd"]
+    short = shorten_path(cwd)
+    return f"{_c('path')}{short}{R}", ""
+
+
+def _tok_cache(tok, cr, in_tok):
+    """Format: token_count [⟳cache_read/hit%]."""
+    s = f"{_c('tok')}{fmt(tok)}{R}"
+    if cr > 0:
+        total_in = cr + in_tok
+        hit = int(cr * 100 / total_in) if total_in > 0 else 0
+        s += f" {_c('hit')}⟳{fmt(cr)}{R}{_c('cache')}/{hit}%{R}"
+    return s
+
+
+def _cost_total(base, cc):
+    return f"{_c('cost')}{fcost(base + cc)}{R}"
+
+
+def render_today(ctx):
+    """Today: tokens + cache/hit% + cost [› proj ...]."""
+    g, gp = ctx["g"], ctx["gp"]
+    s = (f"{_c('today')}today{R} "
+         f"{_tok_cache(g('today_tok'), g('today_cr_tok'), g('today_in_tok'))} "
+         f"{_cost_total(g('today_cost'), g('today_ccost'))}")
+    if gp("today_tok") or gp("today_cr_tok"):
+        s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
+              f"{_tok_cache(gp('today_tok'), gp('today_cr_tok'), gp('today_in_tok'))} "
+              f"{_cost_total(gp('today_cost'), gp('today_ccost'))}")
+    return s, ""
+
+
+def render_week(ctx):
+    """Week: tokens + cost [› proj ...]."""
+    g, gp = ctx["g"], ctx["gp"]
+    s = (f"{_c('week')}week{R} {_c('tok')}{fmt(g('week_tok'))}{R} "
+         f"{_cost_total(g('week_cost'), g('week_ccost'))}")
+    if gp("week_tok"):
+        s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
+              f"{_c('tok')}{fmt(gp('week_tok'))}{R} "
+              f"{_cost_total(gp('week_cost'), gp('week_ccost'))}")
+    return s, ""
+
+
+def render_month(ctx):
+    """Month: tokens + cost [› proj cost]."""
+    g, gp = ctx["g"], ctx["gp"]
+    s = (f"{_c('month')}month{R} {_c('tok')}{fmt(g('month_tok'))}{R} "
+         f"{_cost_total(g('month_cost'), g('month_ccost'))}")
+    if gp("month_cost") + gp("month_ccost") > 0:
+        s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
+              f"{_cost_total(gp('month_cost'), gp('month_ccost'))}")
+    return s, ""
+
+
+RENDERERS = {
+    "5h":      render_5h,
+    "7d":      render_7d,
+    "model":   render_model,
+    "today":   render_today,
+    "week":    render_week,
+    "month":   render_month,
+    "session": render_session,
+    "path":    render_path,
+}
+
+
+# ═══════════════════════════════════════
 #  Render
 # ═══════════════════════════════════════
 
 def main():
-    """Read Claude Code JSON from stdin, output formatted two-line statusbar."""
+    """Read Claude Code JSON from stdin, output formatted statusbar."""
     raw = sys.stdin.read()
     data = json.loads(raw)
+
+    cfg = load_config()
+    rows_cfg = cfg.get("rows", DEFAULT_LAYOUT)
 
     model = data.get("model", {}).get("display_name", "?")
     cwd = data.get("workspace", {}).get("current_dir", "") or data.get("cwd", "")
@@ -398,7 +610,6 @@ def main():
     tokens = get_tokens()
 
     cols = shutil.get_terminal_size((120, 24)).columns
-    now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
 
     # Adaptive bar width
     if cols >= 140:
@@ -416,93 +627,46 @@ def main():
     def gp(k):
         return ps[k] if ps else 0
 
-    # ── 5h quota ──
-    h5_tl = ""
-    if quota and quota.get("five_hour"):
-        h5 = quota["five_hour"]
-        h5_pct = int(h5.get("utilization", 0) or 0)
-        h5_bar = (f"{c('label')}5h{R} {gradient_bar(h5_pct, bw)} "
-                  f"{pct_color(h5_pct)}{h5_pct:2d}%{R}")
-        h5_tl = time_left(h5.get("resets_at"))
-    else:
-        h5_bar = f"{c('label')}5h{R} {c('dim')}--{R}"
+    # Shared context for all renderers
+    ctx = {
+        "data": data, "model": model, "cwd": cwd, "proj_dir": proj_dir,
+        "ctx_pct": ctx_pct, "quota": quota, "tokens": tokens, "ps": ps,
+        "cols": cols, "bw": bw, "g": g, "gp": gp,
+    }
 
-    # ── 7d quota ──
-    d7_tl = ""
-    if quota and quota.get("seven_day"):
-        d7 = quota["seven_day"]
-        d7_pct = int(d7.get("utilization", 0) or 0)
-        d7_bar = (f"{c('label')}7d{R} {gradient_bar(d7_pct, bw)} "
-                  f"{pct_color(d7_pct)}{d7_pct:2d}%{R}")
-        d7_tl = time_left(d7.get("resets_at"))
-        for key, lb in [("seven_day_opus", "op"), ("seven_day_sonnet", "sn")]:
-            m = quota.get(key)
-            if m and (m.get("utilization") or 0) > 0:
-                d7_bar += f" {c('dim')}{lb}:{int(m['utilization'])}%{R}"
-    else:
-        d7_bar = f"{c('label')}7d{R} {c('dim')}--{R}"
+    sep = f" {_c('sep')}│{R} "
 
-    # ── Row 1: 5h │ 7d │ model ctx% clock ──
-    a1_left = h5_bar
-    a1_right = h5_tl
-    b1_left = d7_bar
-    b1_right = d7_tl
-    c1 = (f"{c('model')}{model}{R} "
-          f"{ctx_color(ctx_pct)}ctx {ctx_pct}%{R} "
-          f"{c('time')}{now_str}{R}")
+    # Render each row
+    for row_items in rows_cfg:
+        cells = []
+        for item_name in row_items:
+            renderer = RENDERERS.get(item_name)
+            if not renderer:
+                continue
+            left, right = renderer(ctx)
+            cells.append((left, right))
 
-    # ── Row 2 helpers ──
-    def tok_cache(tok, cr, in_tok):
-        s = f"{c('tok')}{fmt(tok)}{R}"
-        if cr > 0:
-            total_in = cr + in_tok
-            hit = int(cr * 100 / total_in) if total_in > 0 else 0
-            s += f" {c('hit')}⟳{fmt(cr)}{R}{c('cache')}/{hit}%{R}"
-        return s
+        if not cells:
+            continue
 
-    def cost_total(base, cc):
-        return f"{c('cost')}{fcost(base + cc)}{R}"
+        # Calculate column widths
+        widths = []
+        for left, right in cells:
+            w = vlen(left)
+            if right:
+                w += 1 + vlen(right)
+            widths.append(w)
 
-    # today: tok ⟳cache/hit% $cost › proj ...
-    a2 = (f"{c('today')}today{R} "
-          f"{tok_cache(g('today_tok'), g('today_cr_tok'), g('today_in_tok'))} "
-          f"{cost_total(g('today_cost'), g('today_ccost'))}")
-    if gp("today_tok") or gp("today_cr_tok"):
-        a2 += (f" {c('dim')}›{R} {c('proj')}proj{R} "
-               f"{tok_cache(gp('today_tok'), gp('today_cr_tok'), gp('today_in_tok'))} "
-               f"{cost_total(gp('today_cost'), gp('today_ccost'))}")
-
-    # week: tok $cost › proj tok $cost
-    b2 = (f"{c('week')}week{R} {c('tok')}{fmt(g('week_tok'))}{R} "
-          f"{cost_total(g('week_cost'), g('week_ccost'))}")
-    if gp("week_tok"):
-        b2 += (f" {c('dim')}›{R} {c('proj')}proj{R} "
-               f"{c('tok')}{fmt(gp('week_tok'))}{R} "
-               f"{cost_total(gp('week_cost'), gp('week_ccost'))}")
-
-    # month: tok $cost › proj $cost
-    c2 = (f"{c('month')}month{R} {c('tok')}{fmt(g('month_tok'))}{R} "
-          f"{cost_total(g('month_cost'), g('month_ccost'))}")
-    if gp("month_cost") + gp("month_ccost") > 0:
-        c2 += (f" {c('dim')}›{R} {c('proj')}proj{R} "
-               f"{cost_total(gp('month_cost'), gp('month_ccost'))}")
-
-    # ── Pad columns ──
-    def rpad(left, right, w):
-        gap = max(1, w - vlen(left) - vlen(right))
-        return left + " " * gap + right
-
-    wa = max(vlen(a1_left) + 1 + vlen(a1_right), vlen(a2))
-    wb = max(vlen(b1_left) + 1 + vlen(b1_right), vlen(b2))
-    wc = max(vlen(c1), vlen(c2))
-
-    row1 = SEP.join([rpad(a1_left, a1_right, wa),
-                     rpad(b1_left, b1_right, wb),
-                     pad(c1, wc)])
-    row2 = SEP.join([pad(a2, wa), pad(b2, wb), pad(c2, wc)])
-
-    print(row1)
-    print(row2)
+        # Compose row: left-align cells, right-align "right" part within cell
+        parts = []
+        for i, (left, right) in enumerate(cells):
+            w = widths[i]
+            if right:
+                gap = max(1, w - vlen(left) - vlen(right))
+                parts.append(left + " " * gap + right)
+            else:
+                parts.append(left)
+        print(sep.join(parts))
 
 
 # ═══════════════════════════════════════
@@ -513,7 +677,6 @@ def install():
     """Register ccbar as Claude Code's statusline command."""
     settings_path = os.path.join(HOME, ".claude", "settings.json")
 
-    # Read existing settings
     settings = {}
     if os.path.exists(settings_path):
         try:
@@ -522,7 +685,6 @@ def install():
         except (OSError, json.JSONDecodeError):
             pass
 
-    # Backup
     if os.path.exists(settings_path):
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
         backup = f"{settings_path}.bak.{ts}"
@@ -532,7 +694,6 @@ def install():
         except OSError:
             pass
 
-    # Set statusline
     settings["statusLine"] = {"type": "command", "command": "ccbar"}
 
     os.makedirs(os.path.dirname(settings_path), exist_ok=True)
@@ -541,6 +702,12 @@ def install():
 
     print("✓ ccbar installed as Claude Code statusline")
     print("  Restart Claude Code to activate.")
+    print()
+    print("  Default layout: 2 rows × 3 items")
+    print("  Customize: ~/.config/ccbar.json or CCBAR_LAYOUT env var")
+    print()
+    print("  Example single-row (avoids 'context left until' overlap):")
+    print('    CCBAR_LAYOUT="5h,7d,session,model"')
 
 
 def uninstall():
@@ -561,7 +728,6 @@ def uninstall():
         except (OSError, json.JSONDecodeError) as e:
             print(f"  Error updating settings: {e}")
 
-    # Clean up cache files
     for cache in (QUOTA_CACHE, TOKEN_CACHE):
         try:
             os.remove(cache)
@@ -569,6 +735,25 @@ def uninstall():
             pass
 
     print("✓ ccbar uninstalled. Cache files cleaned.")
+
+
+def init_config():
+    """Create default config file at ~/.config/ccbar.json."""
+    if os.path.exists(CONFIG_PATH):
+        print(f"  Config already exists: {CONFIG_PATH}")
+        return
+
+    default_cfg = {
+        "rows": DEFAULT_LAYOUT,
+        "colors": {},
+    }
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(default_cfg, f, indent=2)
+    print(f"✓ Created config: {CONFIG_PATH}")
+    print()
+    print("  Available items: 5h, 7d, model, today, week, month, session, path")
+    print('  Example: {"rows": [["5h","7d","session","model"], ["today","week","month"]]}')
 
 
 # ═══════════════════════════════════════
@@ -580,18 +765,24 @@ def cli():
         install()
     elif "--uninstall" in sys.argv:
         uninstall()
+    elif "--init-config" in sys.argv:
+        init_config()
     elif "--version" in sys.argv:
         print(f"ccbar {__version__}")
     elif "--help" in sys.argv or "-h" in sys.argv:
         print(f"ccbar {__version__} — Accurate cost tracking for Claude Code")
         print()
         print("Usage:")
-        print("  ccbar              Read Claude Code JSON from stdin, output statusbar")
-        print("  ccbar --install    Register ccbar as Claude Code statusline command")
-        print("  ccbar --uninstall  Remove ccbar and clean up caches")
-        print("  ccbar --version    Print version")
+        print("  ccbar                Read Claude Code JSON from stdin, output statusbar")
+        print("  ccbar --install      Register ccbar as Claude Code statusline command")
+        print("  ccbar --uninstall    Remove ccbar and clean up caches")
+        print("  ccbar --init-config  Create default config at ~/.config/ccbar.json")
+        print("  ccbar --version      Print version")
+        print()
+        print("Layout items: 5h, 7d, model, today, week, month, session, path")
         print()
         print("Environment:")
+        print("  CCBAR_LAYOUT         Row layout (e.g. '5h,7d,model|today,week,month')")
         print("  CLAUDE_OAUTH_TOKEN   OAuth token (skip keychain lookup)")
     else:
         try:
