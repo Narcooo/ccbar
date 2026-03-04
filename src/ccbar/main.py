@@ -38,8 +38,8 @@ CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 # ── Default layout: 2 rows × 3 items ──
 # Available items: 5h, 7d, model, today, week, month, session, path
 DEFAULT_LAYOUT = [
-    ["5h", "7d", "model"],
-    ["session", "today", "month"],
+    ["5h", "today", "month"],
+    ["7d", "session", "model"],
 ]
 
 # ── Per-model pricing (USD per million tokens) ──
@@ -70,29 +70,40 @@ DFLT = {t: v / 1e6 for t, v in DFLT_PRICING.items()}
 # Edit these or override in ~/.config/ccbar.json {"colors": {"cost": [255,0,0]}}
 COLORS = {
     "sep":    (60, 60, 70),      # separator │
-    "label":  (120, 160, 220),   # "5h" "7d" labels (steel blue)
-    "today":  (110, 160, 200),   # "today" label (muted slate blue)
-    "week":   (130, 155, 190),   # "week" label (dusty blue)
-    "month":  (145, 150, 180),   # "month" label (lavender gray)
-    "proj":   (255, 150, 100),   # "proj" label (coral orange)
-    "model":  (80, 220, 180),    # model name (teal)
-    "cost":   (255, 210, 80),    # cost $ (gold)
-    "tok":    (220, 220, 230),   # token numbers (bright white)
-    "ctx":    (160, 160, 180),   # ctx label
-    "time":   (240, 180, 130),   # clock (warm peach)
-    "dim":    (140, 140, 155),   # dim text
-    "cache":  (130, 140, 160),   # cache cost (muted steel)
-    "hit":    (100, 200, 160),   # cache hit rate (green-teal)
-    "tleft":  (180, 160, 220),   # time-left countdown
+
+    # ── Labels: deep blue family (distinct but all dark-blue) ──
+    "label":  (70, 110, 180),    # "5h" "7d" (deep steel blue)
+    "sess":   (80, 105, 170),    # "session" (deep navy blue)
+    "today":  (65, 120, 175),    # "today" (deep ocean blue)
+    "week":   (75, 115, 165),    # "week" (deep slate blue)
+    "month":  (85, 100, 160),    # "month" (deep indigo blue)
+    "ctx":    (60, 125, 185),    # "ctx" (deep sky blue)
+
+    # ── Money: gold family ──
+    "cost":   (255, 210, 60),    # cost $ values (gold)
+    "burn":   (255, 190, 50),    # burn rate $/h (warm gold)
+    "proj_":  (240, 180, 50),    # projection →$ (amber gold)
+    "compact":(220, 200, 80),    # compact-mode $/d (muted gold)
+
+    # ── Time: violet family ──
+    "tleft":  (170, 150, 230),   # 5h/7d countdown (violet)
+    "dur":    (180, 155, 220),   # session duration (light violet)
+    "time":   (240, 170, 110),   # clock HH:MM (warm amber, distinct)
+
+    # ── Data ──
+    "tok":    (200, 210, 230),   # token numbers (soft white)
+    "model":  (80, 220, 170),    # model name (teal-green)
+    "proj":   (255, 140, 80),    # "proj" breakdown (coral)
+    "hit":    (200, 170, 100),   # cache hit rate (warm tan)
+    "cache":  (170, 145, 110),   # cache ♻ symbol (muted bronze)
+
+    # ── Misc ──
+    "dim":    (120, 120, 140),   # dim text
     "paren":  (70, 70, 80),      # parentheses
     "empty":  (45, 45, 45),      # empty bar segments
-    "sess":   (200, 180, 255),   # session label (light purple)
-    "burn":   (255, 160, 100),   # burn rate (warm orange)
-    "proj_":  (200, 130, 80),    # projection arrow (amber)
-    "path":   (160, 180, 200),   # path label (steel)
-    "lines+": (100, 200, 120),   # lines added (green)
-    "lines-": (200, 100, 100),   # lines removed (red)
-    "compact":(200, 200, 100),   # compact-mode today cost (muted yellow)
+    "path":   (110, 155, 200),   # path (blue family)
+    "lines+": (80, 210, 100),    # lines added (green)
+    "lines-": (220, 90, 90),     # lines removed (red)
 }
 
 
@@ -109,14 +120,7 @@ R = "\033[0m"
 
 def pct_color(pct):
     """Smooth gradient: green → yellow → red."""
-    t = max(0, min(100, pct)) / 100.0
-    if t < 0.5:
-        f = t / 0.5
-        r, g, b = int(40 + 215 * f), int(210 + 10 * f), int(100 - 100 * f)
-    else:
-        f = (t - 0.5) / 0.5
-        r, g, b = 255, int(220 - 170 * f), int(40 * (1 - f))
-    return rgb(r, g, b)
+    return rgb(*_grad_rgb(max(0, min(100, pct)) / 100.0))
 
 
 def ctx_color(pct):
@@ -209,22 +213,39 @@ def fmt_duration(ms):
 #  Gradient bar
 # ═══════════════════════════════════════
 
+def _grad_rgb(t):
+    """Gradient green→yellow→red for t in [0, 1]."""
+    t = max(0.0, min(1.0, t))
+    if t < 0.5:
+        f = t / 0.5
+        return int(40 + 215 * f), int(210 + 10 * f), int(100 - 100 * f)
+    f = (t - 0.5) / 0.5
+    return 255, int(220 - 170 * f), int(40 * (1 - f))
+
+
 def gradient_bar(pct, width=24):
     pct = max(0, min(100, pct))
-    filled = int(pct * width / 100)
-    if pct > 0 and filled == 0:
+    frac = pct * width / 100.0  # fractional filled count
+    filled = int(frac)
+    partial = frac - filled  # 0.0–0.99
+
+    if pct > 0 and filled == 0 and partial < 0.01:
         filled = 1
-    empty = width - filled
+        partial = 0.0
+
     bar = ""
     for i in range(filled):
-        t = i / max(width - 1, 1)
-        if t < 0.5:
-            f = t / 0.5
-            r, g, b = int(40 + 215 * f), int(210 + 10 * f), int(100 - 100 * f)
-        else:
-            f = (t - 0.5) / 0.5
-            r, g, b = 255, int(220 - 170 * f), int(40 * (1 - f))
+        r, g, b = _grad_rgb(i / max(width - 1, 1))
         bar += f"\033[38;2;{r};{g};{b}m━"
+
+    # Fractional segment at the boundary: half-width bar ╸
+    if partial > 0.1 and filled < width:
+        r, g, b = _grad_rgb(filled / max(width - 1, 1))
+        bar += f"\033[38;2;{r};{g};{b}m╸"
+        empty = width - filled - 1
+    else:
+        empty = width - filled
+
     bar += f"{_c('empty')}{'─' * empty}{R}"
     return bar
 
@@ -489,22 +510,35 @@ def proj_stats(tokens, pk):
 #
 # Each returns (left_str, right_str).
 # "right" is used for right-aligned countdown timers (empty for most items).
+# ctx["lw"] = label width for this column (for cross-row label alignment).
+
+# Label text length per item (for computing column label alignment)
+ITEM_LABEL_LEN = {
+    "5h": 2, "7d": 2, "model": 7,  # "context"
+    "session": 7, "today": 5, "month": 5, "week": 4, "path": 0,
+}
+
+
+def _label_gap(ctx, own_len):
+    """Compute gap after label: 1 base space + extra padding to align."""
+    lw = ctx.get("lw", own_len)
+    return " " * (1 + max(0, lw - own_len))
 
 def render_5h(ctx):
     """5-hour quota bar + countdown."""
     quota, bw = ctx["quota"], ctx["bw"]
+    g = _label_gap(ctx, 2)
     if quota and quota.get("five_hour"):
         h5 = quota["five_hour"]
         pct = int(h5.get("utilization", 0) or 0)
         if bw > 0:
-            left = (f"{_c('label')}5h{R} {gradient_bar(pct, bw)} "
+            left = (f"{_c('label')}5h{R}{g}{gradient_bar(pct, bw)} "
                     f"{pct_color(pct)}{pct:2d}%{R}")
         else:
-            # Ultra-narrow: no bar, just label + pct
-            left = f"{_c('label')}5h{R} {pct_color(pct)}{pct}%{R}"
+            left = f"{_c('label')}5h{R}{g}{pct_color(pct)}{pct}%{R}"
         right = time_left(h5.get("resets_at"))
     else:
-        left = f"{_c('label')}5h{R} {_c('dim')}--{R}"
+        left = f"{_c('label')}5h{R}{g}{_c('dim')}--{R}"
         right = ""
     return left, right
 
@@ -512,14 +546,15 @@ def render_5h(ctx):
 def render_7d(ctx):
     """7-day quota bar + countdown + per-model breakdown."""
     quota, bw = ctx["quota"], ctx["bw"]
+    g = _label_gap(ctx, 2)
     if quota and quota.get("seven_day"):
         d7 = quota["seven_day"]
         pct = int(d7.get("utilization", 0) or 0)
         if bw > 0:
-            left = (f"{_c('label')}7d{R} {gradient_bar(pct, bw)} "
+            left = (f"{_c('label')}7d{R}{g}{gradient_bar(pct, bw)} "
                     f"{pct_color(pct)}{pct:2d}%{R}")
         else:
-            left = f"{_c('label')}7d{R} {pct_color(pct)}{pct}%{R}"
+            left = f"{_c('label')}7d{R}{g}{pct_color(pct)}{pct}%{R}"
         # Per-model breakdown only when there's room
         if bw >= 7:
             for key, lb in [("seven_day_opus", "op"), ("seven_day_sonnet", "sn")]:
@@ -528,30 +563,36 @@ def render_7d(ctx):
                     left += f" {_c('dim')}{lb}:{int(m['utilization'])}%{R}"
         right = time_left(d7.get("resets_at"))
     else:
-        left = f"{_c('label')}7d{R} {_c('dim')}--{R}"
+        left = f"{_c('label')}7d{R}{g}{_c('dim')}--{R}"
         right = ""
     return left, right
 
 
 def render_model(ctx):
-    """Model name + context %. Clock right-aligned within this column."""
+    """ctx% + model name + clock right-aligned."""
     model = ctx["model"]
     ctx_pct = ctx["ctx_pct"]
     now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
-    left = f"{_c('model')}{model}{R} {ctx_color(ctx_pct)}ctx {ctx_pct}%{R}"
+    g = _label_gap(ctx, 7)  # "context" = 7
+    left = f"{_c('ctx')}context{R}{g}{ctx_color(ctx_pct)}{ctx_pct}%{R} {_c('model')}{model}{R}"
     right = f"{_c('time')}{now_str}{R}"
     return left, right
 
 
 def render_session(ctx):
-    """Session cost + burn rate + projection + duration + lines."""
+    """Session cost + burn rate + projection + duration + lines.
+
+    Width-aware: narrow terminals drop lines, then projection.
+    """
     cost_data = ctx["data"].get("cost", {})
     sess_cost = cost_data.get("total_cost_usd", 0) or 0
     dur_ms = cost_data.get("total_duration_ms", 0) or 0
     lines_add = cost_data.get("total_lines_added", 0) or 0
     lines_rm = cost_data.get("total_lines_removed", 0) or 0
+    c = ctx.get("cols", 120)
 
-    s = f"{_c('sess')}sess{R} {_c('cost')}{fcost(sess_cost)}{R}"
+    g = _label_gap(ctx, 7)  # "session" = 7
+    s = f"{_c('sess')}session{R}{g}{_c('cost')}{fcost(sess_cost)}{R}"
 
     # Burn rate: $/hour
     dur_hours = dur_ms / 3_600_000 if dur_ms else 0
@@ -559,7 +600,7 @@ def render_session(ctx):
     if burn_rate > 0:
         s += f" {_c('burn')}{fcost(burn_rate)}/h{R}"
 
-    # Projection: estimated cost for remaining 5h window
+    # Projection
     quota = ctx.get("quota")
     if burn_rate > 0 and quota and quota.get("five_hour"):
         resets_at = quota["five_hour"].get("resets_at", "")
@@ -573,12 +614,16 @@ def render_session(ctx):
             except (ValueError, TypeError):
                 pass
 
+    # Duration (violet, like 5h/7d countdown)
     dur = fmt_duration(dur_ms)
     if dur:
-        s += f" {_c('dim')}{dur}{R}"
+        s += f" {_c('dur')}{dur}{R}"
+
+    # Lines → right-aligned
+    right = ""
     if lines_add or lines_rm:
-        s += f" {_c('lines+')}+{lines_add}{R}{_c('dim')}/{R}{_c('lines-')}-{lines_rm}{R}"
-    return s, ""
+        right = f"{_c('lines+')}+{lines_add}{R}{_c('dim')}/{R}{_c('lines-')}-{lines_rm}{R}"
+    return s, right
 
 
 def render_path(ctx):
@@ -589,12 +634,12 @@ def render_path(ctx):
 
 
 def _tok_cache(tok, cr, in_tok):
-    """Format: token_count [⟳cache_read/hit%]."""
+    """Format: token_count [♻cache_read/hit%]."""
     s = f"{_c('tok')}{fmt(tok)}{R}"
     if cr > 0:
         total_in = cr + in_tok
         hit = int(cr * 100 / total_in) if total_in > 0 else 0
-        s += f" {_c('hit')}⟳{fmt(cr)}{R}{_c('cache')}/{hit}%{R}"
+        s += f" {_c('hit')}♻{fmt(cr)}{R}{_c('cache')}/{hit}%{R}"
     return s
 
 
@@ -604,39 +649,47 @@ def _cost_total(base, cc):
 
 def render_today(ctx):
     """Today: tokens + cost [› proj tokens + cache/hit% + cost]."""
-    g, gp = ctx["g"], ctx["gp"]
-    # Today: just tokens + cost (no cache detail — that's proj-level)
-    s = (f"{_c('today')}today{R} {_c('tok')}{fmt(g('today_tok'))}{R} "
-         f"{_cost_total(g('today_cost'), g('today_ccost'))}")
-    # Proj: tokens + cache/hit% + cost (cache matters at project level)
+    gt, gp = ctx["g"], ctx["gp"]
+    gap = _label_gap(ctx, 5)  # "today" = 5
+    left = f"{_c('today')}today{R}{gap}{_c('tok')}{fmt(gt('today_tok'))}{R}"
+    # Proj: tokens + cache/hit% + cost
     if gp("today_tok") or gp("today_cr_tok"):
-        s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
-              f"{_tok_cache(gp('today_tok'), gp('today_cr_tok'), gp('today_in_tok'))} "
-              f"{_cost_total(gp('today_cost'), gp('today_ccost'))}")
-    return s, ""
+        left += (f" {_cost_total(gt('today_cost'), gt('today_ccost'))}"
+                 f" {_c('dim')}›{R} {_c('proj')}proj{R} "
+                 f"{_tok_cache(gp('today_tok'), gp('today_cr_tok'), gp('today_in_tok'))}")
+        right = _cost_total(gp('today_cost'), gp('today_ccost'))
+    else:
+        right = _cost_total(gt('today_cost'), gt('today_ccost'))
+    return left, right
 
 
 def render_week(ctx):
     """Week: tokens + cost [› proj ...]."""
-    g, gp = ctx["g"], ctx["gp"]
-    s = (f"{_c('week')}week{R} {_c('tok')}{fmt(g('week_tok'))}{R} "
-         f"{_cost_total(g('week_cost'), g('week_ccost'))}")
+    gt, gp = ctx["g"], ctx["gp"]
+    gap = _label_gap(ctx, 4)  # "week" = 4
+    left = f"{_c('week')}week{R}{gap}{_c('tok')}{fmt(gt('week_tok'))}{R}"
     if gp("week_tok"):
-        s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
-              f"{_c('tok')}{fmt(gp('week_tok'))}{R} "
-              f"{_cost_total(gp('week_cost'), gp('week_ccost'))}")
-    return s, ""
+        left += (f" {_cost_total(gt('week_cost'), gt('week_ccost'))}"
+                 f" {_c('dim')}›{R} {_c('proj')}proj{R} "
+                 f"{_c('tok')}{fmt(gp('week_tok'))}{R}")
+        right = _cost_total(gp('week_cost'), gp('week_ccost'))
+    else:
+        right = _cost_total(gt('week_cost'), gt('week_ccost'))
+    return left, right
 
 
 def render_month(ctx):
     """Month: tokens + cost [› proj cost]."""
-    g, gp = ctx["g"], ctx["gp"]
-    s = (f"{_c('month')}month{R} {_c('tok')}{fmt(g('month_tok'))}{R} "
-         f"{_cost_total(g('month_cost'), g('month_ccost'))}")
+    gt, gp = ctx["g"], ctx["gp"]
+    gap = _label_gap(ctx, 5)  # "month" = 5
+    left = f"{_c('month')}month{R}{gap}{_c('tok')}{fmt(gt('month_tok'))}{R}"
     if gp("month_cost") + gp("month_ccost") > 0:
-        s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
-              f"{_cost_total(gp('month_cost'), gp('month_ccost'))}")
-    return s, ""
+        left += (f" {_cost_total(gt('month_cost'), gt('month_ccost'))}"
+                 f" {_c('dim')}›{R} {_c('proj')}proj{R}")
+        right = _cost_total(gp('month_cost'), gp('month_ccost'))
+    else:
+        right = _cost_total(gt('month_cost'), gt('month_ccost'))
+    return left, right
 
 
 RENDERERS = {
@@ -709,56 +762,96 @@ def main():
     compact = ctx_pct >= COMPACT_CTX_THRESHOLD and len(rows_cfg) > 1
     active_rows = [rows_cfg[0]] if compact else rows_cfg
 
+    # ── Compute per-column label widths for alignment ──
+    n_cols = max((len(r) for r in active_rows), default=0)
+    col_lw = [0] * n_cols
+    for row_items in active_rows:
+        for ci, item_name in enumerate(row_items):
+            ll = ITEM_LABEL_LEN.get(item_name, 0)
+            if ll > col_lw[ci]:
+                col_lw[ci] = ll
+
+    # ── Render all rows, collect cells ──
+    all_rows = []
     for row_idx, row_items in enumerate(active_rows):
         cells = []
-        for item_name in row_items:
+        for ci, item_name in enumerate(row_items):
             renderer = RENDERERS.get(item_name)
             if not renderer:
                 continue
-            left, right = renderer(ctx)
-            cells.append((left, right))
-
-        if not cells:
-            continue
-
-        # Compact mode: append today cost to last cell
+            ctx["lw"] = col_lw[ci] if ci < len(col_lw) else 0
+            cells.append(renderer(ctx))
         if compact and row_idx == 0:
             today_cost = g("today_cost") + g("today_ccost")
-            if today_cost > 0:
+            if today_cost > 0 and cells:
                 last_left, last_right = cells[-1]
                 last_left += f" {_c('compact')}{fcost(today_cost)}/d{R}"
                 cells[-1] = (last_left, last_right)
+        all_rows.append(cells)
 
-        # ── Compose cells into row string ──
-        parts = []
-        for left, right in cells:
+    # ── Compute aligned column widths across all rows ──
+    max_cols = max((len(r) for r in all_rows), default=0)
+    col_widths = [0] * max_cols
+    for cells in all_rows:
+        for i, (left, right) in enumerate(cells):
+            w = vlen(left)
             if right:
-                parts.append(left + " " + right)
-            else:
-                parts.append(left)
-        row_str = sep.join(parts)
+                w += 1 + vlen(right)
+            if w > col_widths[i]:
+                col_widths[i] = w
 
-        # ── Width overflow: progressive truncation for non-row-1 ──
-        if vlen(row_str) > cols and row_idx > 0:
-            # Pass 1: re-render without proj breakdowns
-            saved_ps = ctx["ps"]
-            ctx["ps"] = None
-            trimmed = []
-            for item_name in row_items:
+    # ── Check total width, progressively degrade if needed ──
+    total = sum(col_widths) + sep_vlen * max(0, max_cols - 1)
+    if total > cols:
+        # Pass 1: re-render without proj breakdowns
+        saved_ps = ctx["ps"]
+        ctx["ps"] = None
+        all_rows_trimmed = []
+        for row_items in active_rows:
+            cells = []
+            for ci, item_name in enumerate(row_items):
                 renderer = RENDERERS.get(item_name)
                 if not renderer:
                     continue
-                left, right = renderer(ctx)
-                trimmed.append(left if not right else left + " " + right)
-            ctx["ps"] = saved_ps
-            row_str = sep.join(trimmed)
+                ctx["lw"] = col_lw[ci] if ci < len(col_lw) else 0
+                cells.append(renderer(ctx))
+            all_rows_trimmed.append(cells)
+        ctx["ps"] = saved_ps
 
-            # Pass 2: if still too wide, drop items from the end
-            while vlen(row_str) > cols and len(trimmed) > 1:
-                trimmed.pop()
-                row_str = sep.join(trimmed)
+        # Recompute widths
+        col_widths = [0] * max_cols
+        for cells in all_rows_trimmed:
+            for i, (left, right) in enumerate(cells):
+                w = vlen(left)
+                if right:
+                    w += 1 + vlen(right)
+                if w > col_widths[i]:
+                    col_widths[i] = w
 
-        print(row_str)
+        total = sum(col_widths) + sep_vlen * max(0, max_cols - 1)
+
+        # Pass 2: drop trailing columns if still too wide
+        while total > cols and max_cols > 1:
+            max_cols -= 1
+            col_widths = col_widths[:max_cols]
+            for row in all_rows_trimmed:
+                while len(row) > max_cols:
+                    row.pop()
+            total = sum(col_widths) + sep_vlen * max(0, max_cols - 1)
+
+        all_rows = all_rows_trimmed
+
+    # ── Output rows with aligned columns ──
+    for cells in all_rows:
+        parts = []
+        for i, (left, right) in enumerate(cells):
+            w = col_widths[i] if i < len(col_widths) else 0
+            if right:
+                gap = max(1, w - vlen(left) - vlen(right))
+                parts.append(left + " " * gap + right)
+            else:
+                parts.append(pad(left, w))
+        print(sep.join(parts))
 
 
 # ═══════════════════════════════════════

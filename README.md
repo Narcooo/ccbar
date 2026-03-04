@@ -20,17 +20,17 @@ Restart Claude Code. Done.
 ## What it shows
 
 ```
-5h ━━━━━━━━─ 95% 1h22m │ 7d ━━──────── 22% 5d21h          │ Opus 4.6 ctx 42% 17:37
-sess $8.50 $8.50/h →$39 1h +250/-40 │ today 6.2M ⟳167M/96% $328 │ month 19.5M $835 › proj $3.97
+5h ━━━━━━━━─ 95% 1h22m │ today 6.2M $328 › proj ⟳167M/96% $202 │ Opus 4.6 ◕42% 1h 17:37
+7d ━━──────── 22% 5d21h │ $8.50 $8.50/h →$39 +250/-40          │ month 19.5M $835 › proj $3.97
 ```
 
-**Row 1:** 5h quota bar + countdown │ 7d quota bar + countdown │ model · ctx% · clock
+**Row 1:** 5h quota bar + countdown │ today tokens + cost [› proj cache] │ model · ○◔◑◕● ctx ring · duration · clock
 
-**Row 2:** session cost · burn rate · projection · duration · lines │ today · cache hit% · cost │ month · cost [› proj]
+**Row 2:** 7d quota bar + countdown │ session cost · burn rate · projection · lines │ month · cost [› proj]
 
 When context ≥ 80% (Claude Code overlays "context left until auto-compact"), ccbar auto-compresses to 1 row:
 ```
-5h ━━━━━━━━─ 95% 1h22m │ 7d ━━──────── 22% 5d21h │ Opus 4.6 ctx 85% 17:37 $328/d
+5h ━━━━━━━━─ 95% 1h22m │ today 6.2M $328 │ Opus 4.6 ●85% 2h 17:37 $328/d
 ```
 
 ### Session burn rate & projection
@@ -88,13 +88,13 @@ Default: 2 rows × 3 items.
 
 ```bash
 # Pipe separates rows, comma separates items
-export CCBAR_LAYOUT="5h,7d,model|session,today,month"
+export CCBAR_LAYOUT="5h,today,model|7d,session,month"
 
 # Single row
 export CCBAR_LAYOUT="5h,7d,session,model"
 
 # Three rows
-export CCBAR_LAYOUT="5h,7d,model|session,today,path|week,month"
+export CCBAR_LAYOUT="5h,today,model|7d,session,month|week,path"
 ```
 
 ### Config file
@@ -107,7 +107,7 @@ The generated config includes everything you can customize:
 
 ```json
 {
-  "rows": [["5h", "7d", "model"], ["session", "today", "month"]],
+  "rows": [["5h", "today", "model"], ["7d", "session", "month"]],
   "compact_threshold": 80,
   "colors": {},
   "pricing": {
@@ -133,9 +133,9 @@ The generated config includes everything you can customize:
 |------|-------|
 | `5h` | 5-hour quota bar + reset countdown |
 | `7d` | 7-day quota bar + per-model breakdown + countdown |
-| `model` | Model name + context% + clock |
-| `session` | Session cost + $/h burn rate + →projection + duration + lines |
-| `today` | Today tokens + cache hit% + cost [› proj] |
+| `model` | Model name + ○◔◑◕● context ring + duration + clock |
+| `session` | Session cost + $/h burn rate + →projection + lines |
+| `today` | Today tokens + cost [› proj cache hit%] |
 | `week` | Week tokens + cost [› proj] |
 | `month` | Month tokens + cost [› proj] |
 | `path` | Current working directory (shortened) |
