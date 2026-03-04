@@ -1,8 +1,10 @@
 # ccbar
 
-**Cross-session cost tracking for Claude Code. Zero dependencies.**
+**Precise project cost accounting for Claude Code. Zero dependencies.**
 
-Most Claude Code statusline tools show your **current session** cost — it resets when you restart. ccbar scans your local JSONL logs to show **today / week / month** totals, per-model pricing, per-project breakdown, and real OAuth quota bars — all in ~500 lines of pure Python.
+ccbar is not a dashboard for vibe coding. It's a cost accounting tool — built for developers who treat AI compute as a line item in their project budget.
+
+It scans your local JSONL logs to compute per-model, per-project, cross-session costs with streaming dedup, shows real-time OAuth quota bars, burn rate, and cost projection — all in ~550 lines of pure Python stdlib.
 
 <!-- ![demo](screenshots/demo.png) -->
 
@@ -10,7 +12,7 @@ Most Claude Code statusline tools show your **current session** cost — it rese
 
 ```bash
 pip install ccbar
-ccbar --install   # writes statusLine to ~/.claude/settings.json
+ccbar --install
 ```
 
 Restart Claude Code. Done.
@@ -18,65 +20,82 @@ Restart Claude Code. Done.
 ## What it shows
 
 ```
-5h ━━━━━━━━─ 95% 1h22m │ 7d ━━──────── 22% 5d21h        │ Opus 4.6 ctx 42% 17:37
-today 6.2M ⟳167M/96% $328 │ week 18.6M $816 › proj 278k $2.26 │ month 19.5M $835 › proj $3.97
+5h ━━━━━━━━─ 95% 1h22m │ 7d ━━──────── 22% 5d21h          │ Opus 4.6 ctx 42% 17:37
+sess $8.50 $8.50/h →$39 1h +250/-40 │ today 6.2M ⟳167M/96% $328 │ month 19.5M $835 › proj $3.97
 ```
 
-**Row 1:** 5-hour quota bar + reset countdown │ 7-day quota bar + reset countdown │ model · context% · clock
+**Row 1:** 5h quota bar + countdown │ 7d quota bar + countdown │ model · ctx% · clock
 
-**Row 2:** today tokens · cache/hit% · cost │ week tokens · cost [› proj] │ month tokens · cost [› proj]
+**Row 2:** session cost · burn rate · projection · duration · lines │ today · cache hit% · cost │ month · cost [› proj]
 
-## How is this different?
+When context ≥ 80% (Claude Code overlays "context left until auto-compact"), ccbar auto-compresses to 1 row:
+```
+5h ━━━━━━━━─ 95% 1h22m │ 7d ━━──────── 22% 5d21h │ Opus 4.6 ctx 85% 17:37 $328/d
+```
 
-### vs other statusline tools (ccstatusline, cc-statusline, CCometixLine...)
+### Session burn rate & projection
 
-Most statusline tools are **display formatters** — they render what Claude Code provides via stdin JSON (`cost.total_cost_usd`, model name, context%). That session cost is accurate, but **resets every session**.
+- **`$8.50/h`** — current burn rate (session cost ÷ session duration)
+- **`→$39`** — projected total cost by end of current 5-hour quota window, based on burn rate × remaining time
 
-ccbar adds a data layer on top:
+## Why ccbar?
 
-| Feature | ccbar | Typical statusline tool |
-|---------|-------|------------------------|
-| Session cost | ✅ `session` item | ✅ Built-in |
-| Cross-session history (today/week/month) | ✅ JSONL scan | ❌ |
-| Per-project cost breakdown | ✅ `› proj` | ❌ |
-| Per-model pricing | ✅ Opus/Sonnet/Haiku rates | N/A |
-| Streaming dedup | ✅ msg_id | N/A |
-| Cache hit rate | ✅ `⟳148M/96%` | ❌ |
-| Real OAuth quota bars | ✅ 5h + 7d API | ❌ (some show session blocks) |
-| Dependencies | None (Python stdlib) | Node.js+React / Go / Rust |
+### It tracks project costs, not session vanity metrics
 
-### vs ccusage
+Most statusline tools show the session cost that Claude Code provides via stdin. That number resets every session. ccbar scans all JSONL logs to compute **today / week / month** totals with **per-project breakdown** — so you know "this project cost $202 today" not just "I spent $328 total".
 
-[ccusage](https://github.com/ryoppippi/ccusage) is a great **CLI reporting tool** — it also does per-model pricing, streaming dedup, and session-level analytics. Different use case:
+### Per-model pricing matters
 
-| | ccbar | ccusage |
-|---|-------|---------|
-| **Purpose** | Always-visible statusline | On-demand CLI reports |
-| **Quota** | Real OAuth API (5h + 7d bars, countdown) | 5h billing block analysis |
-| **Burn rate / projection** | ❌ | ✅ |
-| **Session-level reports** | ❌ | ✅ (daily/weekly/session) |
-| **Dependencies** | 0 | 15+ npm packages |
+Opus output costs **$75/M tokens**. Haiku costs **$4/M**. A tool that assumes flat Sonnet pricing will undercount your Opus spending by 5x, or overcount your Haiku sub-agents by 3.75x. ccbar reads the model ID from each JSONL message and applies the correct rate.
 
-They complement each other. Use ccbar for at-a-glance monitoring, ccusage for deep analysis.
+### Streaming dedup prevents inflated numbers
+
+Each Claude API call produces 2–7 JSONL entries during streaming (intermediate chunks with partial `output_tokens`). Without dedup, your cost numbers inflate 2–7x. ccbar deduplicates by `message.id`, keeping only the final entry.
+
+### Cache hit rate shows prompt efficiency
+
+`⟳167M/96%` means 96% of your input tokens came from cache. If this number is low, your prompts or CLAUDE.md might need restructuring. ccbar makes this visible at a glance.
+
+### Visual instant-read
+
+Gradient progress bars tell you quota status in 0.1 seconds — green→yellow→red. You don't need to parse "Block 2/4 (3h left) 🟢 Normal".
+
+### Zero runtime overhead
+
+No Node.js startup, no React rendering pipeline, no background daemon. Pure stdin→stdout, single process, instant exit. ~550 lines of Python stdlib.
+
+## Comparison
+
+| | ccbar | ccusage statusline | Other statuslines |
+|---|---|---|---|
+| **Focus** | Project cost accounting | Session analysis | Display formatting |
+| **OAuth quota bars** | ✅ 5h + 7d with countdown | ❌ | ❌ |
+| **Cross-session history** | ✅ today/week/month | ✅ daily/blocks | ❌ session only |
+| **Per-project breakdown** | ✅ `› proj` | ❌ in statusline | ❌ |
+| **Burn rate / projection** | ✅ $/h → projected | ✅ tok/min + projection | ❌ |
+| **Cache hit rate** | ✅ visual | tracks internally | ❌ |
+| **Streaming dedup** | ✅ msg_id | ✅ msg_id:req_id | N/A |
+| **Per-model pricing** | ✅ configurable | ✅ LiteLLM prefetch | N/A |
+| **Auto-adaptive layout** | ✅ ctx ≥ 80% compresses | ❌ | ❌ |
+| **Dependencies** | 0 | 15+ npm | Node/Go/Rust |
+| **Visual design** | Gradient bars + true-color | Emoji text | Varies |
 
 ## Configurable layout
 
-Default: 2 rows × 3 items. You can customize what appears and how many rows.
+Default: 2 rows × 3 items.
 
-### Quick: environment variable
+### Environment variable
 
 ```bash
-# Single row (avoids "context left until" overlap)
-export CCBAR_LAYOUT="5h,7d,session,model"
+# Pipe separates rows, comma separates items
+export CCBAR_LAYOUT="5h,7d,model|session,today,month"
 
-# Add session to row 1, path to row 2
-export CCBAR_LAYOUT="5h,7d,session,model|today,path,month"
+# Single row
+export CCBAR_LAYOUT="5h,7d,session,model"
 
 # Three rows
 export CCBAR_LAYOUT="5h,7d,model|session,today,path|week,month"
 ```
-
-Pipe `|` separates rows, comma `,` separates items.
 
 ### Config file
 
@@ -84,17 +103,29 @@ Pipe `|` separates rows, comma `,` separates items.
 ccbar --init-config   # creates ~/.config/ccbar.json
 ```
 
+The generated config includes everything you can customize:
+
 ```json
 {
-  "rows": [
-    ["5h", "7d", "session", "model"],
-    ["today", "week", "month"]
-  ],
-  "colors": {
-    "cost": [255, 100, 100]
+  "rows": [["5h", "7d", "model"], ["session", "today", "month"]],
+  "compact_threshold": 80,
+  "colors": {},
+  "pricing": {
+    "claude-opus-4-6": {"in": 15, "out": 75, "cc": 18.75, "cr": 1.5},
+    "claude-sonnet-4-6": {"in": 3, "out": 15, "cc": 3.75, "cr": 0.3},
+    "claude-haiku-4-5": {"in": 0.8, "out": 4, "cc": 1, "cr": 0.08}
+  },
+  "api": {
+    "endpoint": "https://api.anthropic.com/api/oauth/usage",
+    "beta_header": "oauth-2025-04-20"
   }
 }
 ```
+
+- **pricing** — $/million tokens. Update when Anthropic changes rates
+- **api** — OAuth endpoint and beta header. Change if API evolves
+- **compact_threshold** — auto-compress to 1 row when ctx% exceeds this (default: 80)
+- **colors** — `[R, G, B]` overrides for any named color
 
 ### Available items
 
@@ -103,82 +134,35 @@ ccbar --init-config   # creates ~/.config/ccbar.json
 | `5h` | 5-hour quota bar + reset countdown |
 | `7d` | 7-day quota bar + per-model breakdown + countdown |
 | `model` | Model name + context% + clock |
-| `session` | Session cost + duration + lines changed |
+| `session` | Session cost + $/h burn rate + →projection + duration + lines |
 | `today` | Today tokens + cache hit% + cost [› proj] |
 | `week` | Week tokens + cost [› proj] |
 | `month` | Month tokens + cost [› proj] |
 | `path` | Current working directory (shortened) |
 
-### "context left until" workaround
-
-When context is high, Claude Code overlays "context left until auto-compact" on the right side of the statusline, which can hide your second row. Fix: use a single-row layout:
-
-```bash
-export CCBAR_LAYOUT="5h,7d,session,model"
-```
-
 ## How it works
 
-1. Claude Code pipes JSON to stdin on each update (model, context, cost, workspace)
-2. ccbar fetches OAuth quota from `api.anthropic.com` (cached 30s)
+1. Claude Code pipes JSON to stdin (model, context, cost, workspace)
+2. ccbar fetches OAuth quota from Anthropic API (cached 30s)
 3. ccbar scans `~/.claude/projects/**/*.jsonl` for token usage (cached 60s)
-4. Streaming entries are deduplicated by `message.id` — last entry per ID wins
-5. Per-model pricing: Opus $75/M output, Sonnet $15/M, Haiku $4/M
-6. Configurable multi-row output is rendered with adaptive column widths
-
-### Per-model pricing table
-
-| Model | Input | Output | Cache Write | Cache Read |
-|-------|------:|-------:|------------:|-----------:|
-| Opus 4.5/4.6 | $15/M | $75/M | $18.75/M | $1.50/M |
-| Sonnet 4.5/4.6 | $3/M | $15/M | $3.75/M | $0.30/M |
-| Haiku 4.5 | $0.80/M | $4/M | $1/M | $0.08/M |
-
-### Why streaming dedup matters
-
-When Claude streams a response, the JSONL log records 2–7 entries for the same message (intermediate chunks with partial `output_tokens`). ccbar keeps only the final entry per `message.id`, preventing 2–7x cost inflation.
+4. Streaming entries deduplicated by `message.id` — last entry wins
+5. Per-model pricing applied per message (configurable in config)
+6. Burn rate = session cost ÷ duration; projection = burn rate × remaining 5h window
+7. If ctx ≥ 80%, auto-compress to 1 row with today cost suffix
 
 ### OAuth token
 
-On macOS, ccbar reads from Keychain automatically. On Linux or in CI:
-
+macOS: auto-reads from Keychain. Linux/CI:
 ```bash
-export CLAUDE_OAUTH_TOKEN="your-token-here"
+export CLAUDE_OAUTH_TOKEN="your-token"
 ```
-
-Without OAuth, quota bars show `--` but cost tracking works fine.
-
-## Customize colors
-
-Override any color in config:
-
-```json
-{
-  "colors": {
-    "cost":  [255, 210, 80],
-    "model": [80, 220, 180],
-    "proj":  [255, 150, 100]
-  }
-}
-```
-
-All values are `[R, G, B]` for true-color terminals.
+Without OAuth, quota bars show `--` but everything else works.
 
 ## Uninstall
 
 ```bash
 ccbar --uninstall
 pip uninstall ccbar
-```
-
-## CLI reference
-
-```
-ccbar                Read JSON from stdin → render statusbar
-ccbar --install      Register as Claude Code statusline
-ccbar --uninstall    Remove from settings + clean caches
-ccbar --init-config  Create ~/.config/ccbar.json with defaults
-ccbar --version      Print version
 ```
 
 ## License

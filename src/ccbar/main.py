@@ -29,6 +29,7 @@ QUOTA_CACHE = os.path.join(_TMPDIR, "ccbar-quota.json")
 TOKEN_CACHE = os.path.join(_TMPDIR, "ccbar-tokens.json")
 QUOTA_TTL = 30   # API refresh interval (seconds)
 TOKEN_TTL = 60   # JSONL scan interval (seconds)
+COMPACT_CTX_THRESHOLD = 80  # ctx% above this → auto-compress to 1 row
 
 HOME = os.path.expanduser("~")
 PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
@@ -38,19 +39,32 @@ CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 # Available items: 5h, 7d, model, today, week, month, session, path
 DEFAULT_LAYOUT = [
     ["5h", "7d", "model"],
-    ["today", "week", "month"],
+    ["session", "today", "month"],
 ]
 
-# ── Per-model pricing (USD per token) ──
-# in=input, out=output, cc=cache_creation, cr=cache_read
-PRICING = {
-    "claude-opus-4-6":   {"in": 15/1e6, "out": 75/1e6, "cc": 18.75/1e6, "cr": 1.5/1e6},
-    "claude-opus-4-5":   {"in": 15/1e6, "out": 75/1e6, "cc": 18.75/1e6, "cr": 1.5/1e6},
-    "claude-sonnet-4-5": {"in": 3/1e6,  "out": 15/1e6, "cc": 3.75/1e6,  "cr": 0.3/1e6},
-    "claude-sonnet-4-6": {"in": 3/1e6,  "out": 15/1e6, "cc": 3.75/1e6,  "cr": 0.3/1e6},
-    "claude-haiku-4-5":  {"in": .8/1e6, "out": 4/1e6,  "cc": 1/1e6,     "cr": .08/1e6},
+# ── Per-model pricing (USD per million tokens) ──
+# Overridable in ~/.config/ccbar.json under "pricing"
+PRICING_TABLE = {
+    "claude-opus-4-6":   {"in": 15, "out": 75, "cc": 18.75, "cr": 1.5},
+    "claude-opus-4-5":   {"in": 15, "out": 75, "cc": 18.75, "cr": 1.5},
+    "claude-sonnet-4-5": {"in": 3,  "out": 15, "cc": 3.75,  "cr": 0.3},
+    "claude-sonnet-4-6": {"in": 3,  "out": 15, "cc": 3.75,  "cr": 0.3},
+    "claude-haiku-4-5":  {"in": .8, "out": 4,  "cc": 1,     "cr": .08},
 }
-DFLT = {"in": 3/1e6, "out": 15/1e6, "cc": 3.75/1e6, "cr": 0.3/1e6}
+DFLT_PRICING = {"in": 3, "out": 15, "cc": 3.75, "cr": 0.3}
+
+# ── OAuth API config ──
+API_CONFIG = {
+    "endpoint": "https://api.anthropic.com/api/oauth/usage",
+    "beta_header": "oauth-2025-04-20",
+}
+
+def _per_token(table):
+    """Convert $/million table to $/token for calculation."""
+    return {k: {t: v / 1e6 for t, v in rates.items()} for k, rates in table.items()}
+
+PRICING = _per_token(PRICING_TABLE)
+DFLT = {t: v / 1e6 for t, v in DFLT_PRICING.items()}
 
 # ── True-color palette ──
 # Edit these or override in ~/.config/ccbar.json {"colors": {"cost": [255,0,0]}}
@@ -73,9 +87,12 @@ COLORS = {
     "paren":  (70, 70, 80),      # parentheses
     "empty":  (45, 45, 45),      # empty bar segments
     "sess":   (200, 180, 255),   # session label (light purple)
+    "burn":   (255, 160, 100),   # burn rate (warm orange)
+    "proj_":  (200, 130, 80),    # projection arrow (amber)
     "path":   (160, 180, 200),   # path label (steel)
     "lines+": (100, 200, 120),   # lines added (green)
     "lines-": (200, 100, 100),   # lines removed (red)
+    "compact":(200, 200, 100),   # compact-mode today cost (muted yellow)
 }
 
 
@@ -217,31 +234,47 @@ def gradient_bar(pct, width=24):
 # ═══════════════════════════════════════
 
 def load_config():
-    """Load layout config: CCBAR_LAYOUT env → ~/.config/ccbar.json → defaults."""
-    # 1. Env var: "5h,7d,model|today,week,month"
-    env = os.environ.get("CCBAR_LAYOUT", "").strip()
-    if env:
-        return {
-            "rows": [row.split(",") for row in env.split("|")],
-        }
+    """Load layout config: CCBAR_LAYOUT env → ~/.config/ccbar.json → defaults.
 
-    # 2. Config file
+    Config can override: rows, colors, pricing, api, compact_threshold.
+    """
+    global PRICING, DFLT, API_CONFIG, COMPACT_CTX_THRESHOLD
+
+    cfg = {"rows": DEFAULT_LAYOUT}
+
+    # 1. Config file (load first for colors/pricing/api)
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r") as f:
-                cfg = json.load(f)
-            # Merge colors if provided
-            if "colors" in cfg:
-                for k, v in cfg["colors"].items():
+                file_cfg = json.load(f)
+            # Merge colors
+            if "colors" in file_cfg:
+                for k, v in file_cfg["colors"].items():
                     if k in COLORS and isinstance(v, (list, tuple)) and len(v) == 3:
                         COLORS[k] = tuple(v)
-            if "rows" in cfg:
-                return cfg
+            # Merge pricing ($/million format in config)
+            if "pricing" in file_cfg:
+                for model, rates in file_cfg["pricing"].items():
+                    PRICING_TABLE[model] = rates
+                PRICING = _per_token(PRICING_TABLE)
+                if "default" in file_cfg["pricing"]:
+                    DFLT = {t: v / 1e6 for t, v in file_cfg["pricing"]["default"].items()}
+            # Merge API config
+            if "api" in file_cfg:
+                API_CONFIG.update(file_cfg["api"])
+            # Compact threshold
+            if "compact_threshold" in file_cfg:
+                COMPACT_CTX_THRESHOLD = int(file_cfg["compact_threshold"])
+            cfg = file_cfg if "rows" in file_cfg else cfg
         except (OSError, json.JSONDecodeError):
             pass
 
-    # 3. Default
-    return {"rows": DEFAULT_LAYOUT}
+    # 2. Env var overrides rows
+    env = os.environ.get("CCBAR_LAYOUT", "").strip()
+    if env:
+        cfg["rows"] = [row.split(",") for row in env.split("|")]
+
+    return cfg
 
 
 # ═══════════════════════════════════════
@@ -282,10 +315,10 @@ def fetch_quota():
     try:
         import urllib.request
         req = urllib.request.Request(
-            "https://api.anthropic.com/api/oauth/usage",
+            API_CONFIG["endpoint"],
             headers={
                 "Authorization": f"Bearer {token}",
-                "anthropic-beta": "oauth-2025-04-20",
+                "anthropic-beta": API_CONFIG["beta_header"],
             },
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -503,7 +536,7 @@ def render_model(ctx):
 
 
 def render_session(ctx):
-    """Session cost + duration + lines changed."""
+    """Session cost + burn rate + projection + duration + lines."""
     cost_data = ctx["data"].get("cost", {})
     sess_cost = cost_data.get("total_cost_usd", 0) or 0
     dur_ms = cost_data.get("total_duration_ms", 0) or 0
@@ -511,6 +544,27 @@ def render_session(ctx):
     lines_rm = cost_data.get("total_lines_removed", 0) or 0
 
     s = f"{_c('sess')}sess{R} {_c('cost')}{fcost(sess_cost)}{R}"
+
+    # Burn rate: $/hour
+    dur_hours = dur_ms / 3_600_000 if dur_ms else 0
+    burn_rate = sess_cost / dur_hours if dur_hours > 0.01 else 0
+    if burn_rate > 0:
+        s += f" {_c('burn')}{fcost(burn_rate)}/h{R}"
+
+    # Projection: estimated cost for remaining 5h window
+    quota = ctx.get("quota")
+    if burn_rate > 0 and quota and quota.get("five_hour"):
+        resets_at = quota["five_hour"].get("resets_at", "")
+        if resets_at:
+            try:
+                remaining = datetime.fromisoformat(resets_at) - datetime.now(timezone.utc)
+                rem_hours = max(0, remaining.total_seconds() / 3600)
+                if rem_hours > 0:
+                    projected = sess_cost + burn_rate * rem_hours
+                    s += f" {_c('proj_')}→{fcost(projected)}{R}"
+            except (ValueError, TypeError):
+                pass
+
     dur = fmt_duration(dur_ms)
     if dur:
         s += f" {_c('dim')}{dur}{R}"
@@ -636,8 +690,17 @@ def main():
 
     sep = f" {_c('sep')}│{R} "
 
+    # Auto-adaptive: ctx ≥ threshold → compress to row 1 only + today cost suffix
+    compact = ctx_pct >= COMPACT_CTX_THRESHOLD and len(rows_cfg) > 1
+
+    if compact:
+        # Only render row 1, append today cost as compact suffix
+        active_rows = [rows_cfg[0]]
+    else:
+        active_rows = rows_cfg
+
     # Render each row
-    for row_items in rows_cfg:
+    for row_idx, row_items in enumerate(active_rows):
         cells = []
         for item_name in row_items:
             renderer = RENDERERS.get(item_name)
@@ -649,19 +712,19 @@ def main():
         if not cells:
             continue
 
-        # Calculate column widths
-        widths = []
-        for left, right in cells:
-            w = vlen(left)
-            if right:
-                w += 1 + vlen(right)
-            widths.append(w)
+        # In compact mode, append today cost to the last cell of row 1
+        if compact and row_idx == 0:
+            today_cost = g("today_cost") + g("today_ccost")
+            if today_cost > 0:
+                last_left, last_right = cells[-1]
+                last_left += f" {_c('compact')}{fcost(today_cost)}/d{R}"
+                cells[-1] = (last_left, last_right)
 
-        # Compose row: left-align cells, right-align "right" part within cell
+        # Compose row
         parts = []
-        for i, (left, right) in enumerate(cells):
-            w = widths[i]
+        for left, right in cells:
             if right:
+                w = vlen(left) + 1 + vlen(right)
                 gap = max(1, w - vlen(left) - vlen(right))
                 parts.append(left + " " * gap + right)
             else:
@@ -745,15 +808,21 @@ def init_config():
 
     default_cfg = {
         "rows": DEFAULT_LAYOUT,
+        "compact_threshold": COMPACT_CTX_THRESHOLD,
         "colors": {},
+        "pricing": PRICING_TABLE,
+        "api": API_CONFIG,
     }
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(default_cfg, f, indent=2)
     print(f"✓ Created config: {CONFIG_PATH}")
     print()
-    print("  Available items: 5h, 7d, model, today, week, month, session, path")
-    print('  Example: {"rows": [["5h","7d","session","model"], ["today","week","month"]]}')
+    print("  Available items: 5h, 7d, model, session, today, week, month, path")
+    print()
+    print("  Pricing: $/million tokens — update when Anthropic changes rates")
+    print("  API: endpoint + beta header for OAuth quota")
+    print(f"  Compact: auto-compress to 1 row when ctx ≥ {COMPACT_CTX_THRESHOLD}%")
 
 
 # ═══════════════════════════════════════
