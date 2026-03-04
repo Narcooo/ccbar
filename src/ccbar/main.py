@@ -496,8 +496,12 @@ def render_5h(ctx):
     if quota and quota.get("five_hour"):
         h5 = quota["five_hour"]
         pct = int(h5.get("utilization", 0) or 0)
-        left = (f"{_c('label')}5h{R} {gradient_bar(pct, bw)} "
-                f"{pct_color(pct)}{pct:2d}%{R}")
+        if bw > 0:
+            left = (f"{_c('label')}5h{R} {gradient_bar(pct, bw)} "
+                    f"{pct_color(pct)}{pct:2d}%{R}")
+        else:
+            # Ultra-narrow: no bar, just label + pct
+            left = f"{_c('label')}5h{R} {pct_color(pct)}{pct}%{R}"
         right = time_left(h5.get("resets_at"))
     else:
         left = f"{_c('label')}5h{R} {_c('dim')}--{R}"
@@ -511,12 +515,17 @@ def render_7d(ctx):
     if quota and quota.get("seven_day"):
         d7 = quota["seven_day"]
         pct = int(d7.get("utilization", 0) or 0)
-        left = (f"{_c('label')}7d{R} {gradient_bar(pct, bw)} "
-                f"{pct_color(pct)}{pct:2d}%{R}")
-        for key, lb in [("seven_day_opus", "op"), ("seven_day_sonnet", "sn")]:
-            m = quota.get(key)
-            if m and (m.get("utilization") or 0) > 0:
-                left += f" {_c('dim')}{lb}:{int(m['utilization'])}%{R}"
+        if bw > 0:
+            left = (f"{_c('label')}7d{R} {gradient_bar(pct, bw)} "
+                    f"{pct_color(pct)}{pct:2d}%{R}")
+        else:
+            left = f"{_c('label')}7d{R} {pct_color(pct)}{pct}%{R}"
+        # Per-model breakdown only when there's room
+        if bw >= 7:
+            for key, lb in [("seven_day_opus", "op"), ("seven_day_sonnet", "sn")]:
+                m = quota.get(key)
+                if m and (m.get("utilization") or 0) > 0:
+                    left += f" {_c('dim')}{lb}:{int(m['utilization'])}%{R}"
         right = time_left(d7.get("resets_at"))
     else:
         left = f"{_c('label')}7d{R} {_c('dim')}--{R}"
@@ -525,13 +534,10 @@ def render_7d(ctx):
 
 
 def render_model(ctx):
-    """Model name + context % + clock."""
+    """Model name + context %. Clock is rendered separately via right-align."""
     model = ctx["model"]
     ctx_pct = ctx["ctx_pct"]
-    now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
-    left = (f"{_c('model')}{model}{R} "
-            f"{ctx_color(ctx_pct)}ctx {ctx_pct}%{R} "
-            f"{_c('time')}{now_str}{R}")
+    left = f"{_c('model')}{model}{R} {ctx_color(ctx_pct)}ctx {ctx_pct}%{R}"
     return left, ""
 
 
@@ -595,11 +601,12 @@ def _cost_total(base, cc):
 
 
 def render_today(ctx):
-    """Today: tokens + cache/hit% + cost [› proj ...]."""
+    """Today: tokens + cost [› proj tokens + cache/hit% + cost]."""
     g, gp = ctx["g"], ctx["gp"]
-    s = (f"{_c('today')}today{R} "
-         f"{_tok_cache(g('today_tok'), g('today_cr_tok'), g('today_in_tok'))} "
+    # Today: just tokens + cost (no cache detail — that's proj-level)
+    s = (f"{_c('today')}today{R} {_c('tok')}{fmt(g('today_tok'))}{R} "
          f"{_cost_total(g('today_cost'), g('today_ccost'))}")
+    # Proj: tokens + cache/hit% + cost (cache matters at project level)
     if gp("today_tok") or gp("today_cr_tok"):
         s += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
               f"{_tok_cache(gp('today_tok'), gp('today_cr_tok'), gp('today_in_tok'))} "
@@ -665,13 +672,18 @@ def main():
 
     cols = shutil.get_terminal_size((120, 24)).columns
 
-    # Adaptive bar width
+    # ── Width-adaptive bar size ──
+    # Progressive degradation for split windows
     if cols >= 140:
         bw = 16
-    elif cols >= 100:
+    elif cols >= 120:
         bw = 10
-    else:
+    elif cols >= 90:
         bw = 7
+    elif cols >= 70:
+        bw = 4
+    else:
+        bw = 0  # No bars, just percentages
 
     ps = proj_stats(tokens, pk)
 
@@ -689,17 +701,17 @@ def main():
     }
 
     sep = f" {_c('sep')}│{R} "
+    sep_vlen = 3  # visible: " │ "
 
-    # Auto-adaptive: ctx ≥ threshold → compress to row 1 only + today cost suffix
+    # ── Context-adaptive: compress to 1 row when ctx is high ──
     compact = ctx_pct >= COMPACT_CTX_THRESHOLD and len(rows_cfg) > 1
+    active_rows = [rows_cfg[0]] if compact else rows_cfg
 
-    if compact:
-        # Only render row 1, append today cost as compact suffix
-        active_rows = [rows_cfg[0]]
-    else:
-        active_rows = rows_cfg
+    # ── Clock (right-aligned on row 1) ──
+    now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
+    clock = f"{_c('time')}{now_str}{R}"
+    clock_vlen = vlen(clock)
 
-    # Render each row
     for row_idx, row_items in enumerate(active_rows):
         cells = []
         for item_name in row_items:
@@ -712,7 +724,7 @@ def main():
         if not cells:
             continue
 
-        # In compact mode, append today cost to the last cell of row 1
+        # Compact mode: append today cost to last cell
         if compact and row_idx == 0:
             today_cost = g("today_cost") + g("today_ccost")
             if today_cost > 0:
@@ -720,16 +732,42 @@ def main():
                 last_left += f" {_c('compact')}{fcost(today_cost)}/d{R}"
                 cells[-1] = (last_left, last_right)
 
-        # Compose row
+        # ── Compose cells into row string ──
         parts = []
         for left, right in cells:
             if right:
-                w = vlen(left) + 1 + vlen(right)
-                gap = max(1, w - vlen(left) - vlen(right))
-                parts.append(left + " " * gap + right)
+                parts.append(left + " " + right)
             else:
                 parts.append(left)
-        print(sep.join(parts))
+        row_str = sep.join(parts)
+        row_vlen = vlen(row_str)
+
+        # ── Row 1: right-align clock to terminal edge ──
+        if row_idx == 0:
+            gap = max(1, cols - row_vlen - clock_vlen - 1)
+            row_str += " " * gap + clock
+
+        # ── Width overflow: progressive truncation for non-row-1 ──
+        if vlen(row_str) > cols and row_idx > 0:
+            # Pass 1: re-render without proj breakdowns
+            saved_ps = ctx["ps"]
+            ctx["ps"] = None
+            trimmed = []
+            for item_name in row_items:
+                renderer = RENDERERS.get(item_name)
+                if not renderer:
+                    continue
+                left, right = renderer(ctx)
+                trimmed.append(left if not right else left + " " + right)
+            ctx["ps"] = saved_ps
+            row_str = sep.join(trimmed)
+
+            # Pass 2: if still too wide, drop items from the end
+            while vlen(row_str) > cols and len(trimmed) > 1:
+                trimmed.pop()
+                row_str = sep.join(trimmed)
+
+        print(row_str)
 
 
 # ═══════════════════════════════════════
