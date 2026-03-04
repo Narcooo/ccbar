@@ -411,24 +411,19 @@ def scan_tokens():
         "week_tok": 0, "week_cost": 0.0, "week_ccost": 0.0,
         "week_cr_tok": 0, "week_in_tok": 0,
         "month_tok": 0, "month_cost": 0.0, "month_ccost": 0.0,
+        "all_tok": 0, "all_cost": 0.0, "all_ccost": 0.0,
     }
     st = {**ZERO, "projects": {}}
 
     if not os.path.isdir(PROJECTS_DIR):
         return st
 
-    month_ts = cuts["month"].timestamp()
     for proj in os.listdir(PROJECTS_DIR):
         pp = os.path.join(PROJECTS_DIR, proj)
         if not os.path.isdir(pp):
             continue
         p = dict(ZERO)
         for fp in glob.glob(os.path.join(pp, "**", "*.jsonl"), recursive=True):
-            try:
-                if os.path.getmtime(fp) < month_ts:
-                    continue
-            except OSError:
-                continue
 
             msgs = {}
             try:
@@ -466,6 +461,11 @@ def scan_tokens():
                 in_tok = ((usage.get("input_tokens", 0) or 0)
                           + (usage.get("cache_creation_input_tokens", 0) or 0))
                 base, cr = est_cost(msg.get("model", ""), usage)
+                # All-time totals (no date filter)
+                for d in (st, p):
+                    d["all_tok"] += tok
+                    d["all_cost"] += base
+                    d["all_ccost"] += cr
                 if ts >= cuts["month"]:
                     for d in (st, p):
                         d["month_tok"] += tok
@@ -486,7 +486,7 @@ def scan_tokens():
                                 d["today_cr_tok"] += cr_tok
                                 d["today_in_tok"] += in_tok
 
-        if p["month_tok"] > 0:
+        if p["all_tok"] > 0:
             st["projects"][proj] = p
 
     return st
@@ -638,15 +638,15 @@ def render_session(ctx):
 
 
 def render_total(ctx):
-    """Project total cost (month) + working directory path."""
+    """All-time project cost + working directory path."""
     gt, gp = ctx["g"], ctx["gp"]
     cwd = ctx["cwd"]
     gap = _label_gap(ctx, 5)  # "total" = 5
-    # Project cost if available, otherwise global month cost
-    if gp("month_cost") + gp("month_ccost") > 0:
-        cost = gp("month_cost") + gp("month_ccost")
+    # Project all-time cost if available, otherwise global all-time cost
+    if gp("all_cost") + gp("all_ccost") > 0:
+        cost = gp("all_cost") + gp("all_ccost")
     else:
-        cost = gt("month_cost") + gt("month_ccost")
+        cost = gt("all_cost") + gt("all_ccost")
     left = f"{_c('total')}total{R}{gap}{_c('cost')}{fcost(cost)}{R}"
     short = shorten_path(cwd)
     right = f"{_c('dim')}{short}{R}"
