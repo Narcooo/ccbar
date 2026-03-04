@@ -707,7 +707,7 @@ def render_history(ctx):
             f"{_c('tok')}{fmt(gt('week_tok'))}{R} "
             f"{_c('cost')}{fcost(gt('week_cost') + gt('week_ccost'))}{R}")
     if gp("week_cost") + gp("week_ccost") > 0:
-        left += (f" {_c('dim')}›{R}"
+        left += (f" {_c('dim')}›{R} {_c('proj')}proj{R}"
                  f" {_c('cost')}{fcost(gp('week_cost') + gp('week_ccost'))}{R}")
     # Month: tokens + cost [› proj cost]
     left += (f" {_c('sep')}│{R} "
@@ -715,7 +715,7 @@ def render_history(ctx):
              f"{_c('tok')}{fmt(gt('month_tok'))}{R} "
              f"{_c('cost')}{fcost(gt('month_cost') + gt('month_ccost'))}{R}")
     if gp("month_cost") + gp("month_ccost") > 0:
-        left += (f" {_c('dim')}›{R}"
+        left += (f" {_c('dim')}›{R} {_c('proj')}proj{R}"
                  f" {_c('cost')}{fcost(gp('month_cost') + gp('month_ccost'))}{R}")
     return left, ""
 
