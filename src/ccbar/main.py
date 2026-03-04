@@ -38,7 +38,7 @@ CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 # Available items: 5h, 7d, model, today, week, month, session, total
 DEFAULT_LAYOUT = [
     ["5h", "today", "week", "month"],
-    ["7d", "session", "model", "total"],
+    ["7d", "session", "total", "model"],
 ]
 
 # ── Per-model pricing (USD per million tokens) ──
