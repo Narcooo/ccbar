@@ -29,7 +29,6 @@ QUOTA_CACHE = os.path.join(_TMPDIR, "ccbar-quota.json")
 TOKEN_CACHE = os.path.join(_TMPDIR, "ccbar-tokens.json")
 QUOTA_TTL = 30   # API refresh interval (seconds)
 TOKEN_TTL = 60   # JSONL scan interval (seconds)
-COMPACT_CTX_THRESHOLD = 80  # ctx% above this → auto-compress to 1 row
 
 HOME = os.path.expanduser("~")
 PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
@@ -38,8 +37,8 @@ CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 # ── Default layout: 2 rows × 3 items ──
 # Available items: 5h, 7d, model, today, week, month, session, path
 DEFAULT_LAYOUT = [
-    ["5h", "today", "month"],
-    ["7d", "session", "model"],
+    ["5h", "today", "week", "month"],
+    ["7d", "session", "model", "path"],
 ]
 
 # ── Per-model pricing (USD per million tokens) ──
@@ -83,7 +82,6 @@ COLORS = {
     "cost":   (255, 210, 60),    # cost $ values (gold)
     "burn":   (255, 190, 50),    # burn rate $/h (warm gold)
     "proj_":  (240, 180, 50),    # projection →$ (amber gold)
-    "compact":(220, 200, 80),    # compact-mode $/d (muted gold)
 
     # ── Time: violet family ──
     "tleft":  (170, 150, 230),   # 5h/7d countdown (violet)
@@ -120,7 +118,9 @@ R = "\033[0m"
 
 def pct_color(pct):
     """Smooth gradient: green → yellow → red."""
-    return rgb(*_grad_rgb(max(0, min(100, pct)) / 100.0))
+    t = max(0, min(100, pct)) / 100.0
+    h = 120.0 * (1.0 - t * t)
+    return rgb(*_hsl_rgb(h))
 
 
 def ctx_color(pct):
@@ -140,6 +140,8 @@ def ctx_color(pct):
 # ═══════════════════════════════════════
 
 def fmt(n):
+    if n >= 1_000_000_000:
+        return f"{n / 1e9:.1f}B"
     if n >= 1_000_000:
         return f"{n / 1e6:.1f}M"
     if n >= 1_000:
@@ -148,6 +150,10 @@ def fmt(n):
 
 
 def fcost(v):
+    if v >= 1_000_000:
+        return f"${v / 1e6:.1f}M"
+    if v >= 1_000:
+        return f"${v / 1e3:.1f}k"
     if v >= 100:
         return f"${v:.0f}"
     if v >= 10:
@@ -206,6 +212,8 @@ def fmt_duration(ms):
     if mins < 60:
         return f"{mins}m"
     hours = mins // 60
+    if hours >= 24:
+        return f"{hours // 24}d{hours % 24}h"
     return f"{hours}h{mins % 60}m"
 
 
@@ -213,21 +221,28 @@ def fmt_duration(ms):
 #  Gradient bar
 # ═══════════════════════════════════════
 
-def _grad_rgb(t):
-    """Gradient green→yellow→red for t in [0, 1]."""
-    t = max(0.0, min(1.0, t))
-    if t < 0.5:
-        f = t / 0.5
-        return int(40 + 215 * f), int(210 + 10 * f), int(100 - 100 * f)
-    f = (t - 0.5) / 0.5
-    return 255, int(220 - 170 * f), int(40 * (1 - f))
+def _hsl_rgb(h, s=0.80, l=0.52):
+    """HSL (h in degrees) → (R, G, B) ints."""
+    h = max(0.0, min(120.0, h))
+    c = (1.0 - abs(2.0 * l - 1.0)) * s
+    x = c * (1.0 - abs((h / 60.0) % 2 - 1.0))
+    m = l - c / 2.0
+    if h < 60:
+        r, g, b = c, x, 0.0
+    else:
+        r, g, b = x, c, 0.0
+    return int((r + m) * 255), int((g + m) * 255), int((b + m) * 255)
 
 
-def gradient_bar(pct, width=24):
+def gradient_bar(pct, width=10):
+    """Gradient bar with HSL hue interpolation (green→yellow→red).
+
+    Each ━ cell colored by its position in the full bar via HSL hue rotation.
+    """
     pct = max(0, min(100, pct))
-    frac = pct * width / 100.0  # fractional filled count
+    frac = pct * width / 100.0
     filled = int(frac)
-    partial = frac - filled  # 0.0–0.99
+    partial = frac - filled
 
     if pct > 0 and filled == 0 and partial < 0.01:
         filled = 1
@@ -235,12 +250,13 @@ def gradient_bar(pct, width=24):
 
     bar = ""
     for i in range(filled):
-        r, g, b = _grad_rgb(i / max(width - 1, 1))
+        h = 120.0 * (1.0 - (i + 0.5) / width)
+        r, g, b = _hsl_rgb(h)
         bar += f"\033[38;2;{r};{g};{b}m━"
 
-    # Fractional segment at the boundary: half-width bar ╸
     if partial > 0.1 and filled < width:
-        r, g, b = _grad_rgb(filled / max(width - 1, 1))
+        h = 120.0 * (1.0 - (filled + 0.5) / width)
+        r, g, b = _hsl_rgb(h)
         bar += f"\033[38;2;{r};{g};{b}m╸"
         empty = width - filled - 1
     else:
@@ -257,9 +273,9 @@ def gradient_bar(pct, width=24):
 def load_config():
     """Load layout config: CCBAR_LAYOUT env → ~/.config/ccbar.json → defaults.
 
-    Config can override: rows, colors, pricing, api, compact_threshold.
+    Config can override: rows, colors, pricing, api, columns.
     """
-    global PRICING, DFLT, API_CONFIG, COMPACT_CTX_THRESHOLD
+    global PRICING, DFLT, API_CONFIG
 
     cfg = {"rows": DEFAULT_LAYOUT}
 
@@ -283,10 +299,11 @@ def load_config():
             # Merge API config
             if "api" in file_cfg:
                 API_CONFIG.update(file_cfg["api"])
-            # Compact threshold
-            if "compact_threshold" in file_cfg:
-                COMPACT_CTX_THRESHOLD = int(file_cfg["compact_threshold"])
-            cfg = file_cfg if "rows" in file_cfg else cfg
+            # Columns override
+            if "columns" in file_cfg:
+                cfg["columns"] = int(file_cfg["columns"])
+            if "rows" in file_cfg:
+                cfg["rows"] = file_cfg["rows"]
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -515,7 +532,7 @@ def proj_stats(tokens, pk):
 # Label text length per item (for computing column label alignment)
 ITEM_LABEL_LEN = {
     "5h": 2, "7d": 2, "model": 7,  # "context"
-    "session": 7, "today": 5, "month": 5, "week": 4, "path": 0,
+    "session": 7, "today": 5, "month": 5, "week": 4, "path": 4,
 }
 
 
@@ -580,16 +597,12 @@ def render_model(ctx):
 
 
 def render_session(ctx):
-    """Session cost + burn rate + projection + duration + lines.
-
-    Width-aware: narrow terminals drop lines, then projection.
-    """
+    """Session cost + burn rate + projection + duration + lines."""
     cost_data = ctx["data"].get("cost", {})
     sess_cost = cost_data.get("total_cost_usd", 0) or 0
     dur_ms = cost_data.get("total_duration_ms", 0) or 0
     lines_add = cost_data.get("total_lines_added", 0) or 0
     lines_rm = cost_data.get("total_lines_removed", 0) or 0
-    c = ctx.get("cols", 120)
 
     g = _label_gap(ctx, 7)  # "session" = 7
     s = f"{_c('sess')}session{R}{g}{_c('cost')}{fcost(sess_cost)}{R}"
@@ -614,23 +627,22 @@ def render_session(ctx):
             except (ValueError, TypeError):
                 pass
 
-    # Duration (violet, like 5h/7d countdown)
+    # Duration
     dur = fmt_duration(dur_ms)
     if dur:
         s += f" {_c('dur')}{dur}{R}"
 
     # Lines → right-aligned
-    right = ""
-    if lines_add or lines_rm:
-        right = f"{_c('lines+')}+{lines_add}{R}{_c('dim')}/{R}{_c('lines-')}-{lines_rm}{R}"
+    right = f"{_c('lines+')}+{lines_add}{R}{_c('dim')}/{R}{_c('lines-')}-{lines_rm}{R}"
     return s, right
 
 
 def render_path(ctx):
     """Current working directory (shortened)."""
     cwd = ctx["cwd"]
+    gap = _label_gap(ctx, 4)  # "path" = 4
     short = shorten_path(cwd)
-    return f"{_c('path')}{short}{R}", ""
+    return f"{_c('path')}path{R}{gap}{_c('dim')}{short}{R}", ""
 
 
 def _tok_cache(tok, cr, in_tok):
@@ -708,6 +720,40 @@ RENDERERS = {
 #  Render
 # ═══════════════════════════════════════
 
+def _detect_cols():
+    """Detect real terminal width via ancestor tty. Falls back to COLUMNS env → 140."""
+    import fcntl, termios, struct
+
+    try:
+        pid = os.getpid()
+        for _ in range(10):
+            r = subprocess.run(
+                ["ps", "-o", "ppid=,tty=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=1,
+            )
+            parts = r.stdout.split()
+            if len(parts) < 2:
+                break
+            pid, tty = int(parts[0]), parts[1]
+            if tty not in ("??", ""):
+                with open("/dev/" + tty) as f:
+                    res = fcntl.ioctl(f.fileno(), termios.TIOCGWINSZ, b"\x00" * 8)
+                    _, c = struct.unpack("HH", res[:4])
+                    if c > 0:
+                        return c
+    except Exception:
+        pass
+
+    try:
+        c = int(os.environ.get("COLUMNS", 0))
+        if c > 0:
+            return c
+    except (ValueError, TypeError):
+        pass
+
+    return 140
+
+
 def main():
     """Read Claude Code JSON from stdin, output formatted statusbar."""
     raw = sys.stdin.read()
@@ -716,7 +762,8 @@ def main():
     cfg = load_config()
     rows_cfg = cfg.get("rows", DEFAULT_LAYOUT)
 
-    model = data.get("model", {}).get("display_name", "?")
+    m = data.get("model", "?")
+    model = m.get("display_name", "?") if isinstance(m, dict) else str(m)
     cwd = data.get("workspace", {}).get("current_dir", "") or data.get("cwd", "")
     proj_dir = data.get("workspace", {}).get("project_dir", "") or cwd
     ctx_pct = int(data.get("context_window", {}).get("used_percentage", 0) or 0)
@@ -725,20 +772,11 @@ def main():
     quota = fetch_quota()
     tokens = get_tokens()
 
-    cols = shutil.get_terminal_size((120, 24)).columns
+    cols = cfg.get("columns") or _detect_cols()
+    cols -= 4  # safety margin for resize lag + terminal padding
 
-    # ── Width-adaptive bar size ──
-    # Progressive degradation for split windows
-    if cols >= 140:
-        bw = 16
-    elif cols >= 120:
-        bw = 10
-    elif cols >= 90:
-        bw = 7
-    elif cols >= 70:
-        bw = 4
-    else:
-        bw = 0  # No bars, just percentages
+    # ── Initial bar width (will be shrunk adaptively) ──
+    bw = 8
 
     ps = proj_stats(tokens, pk)
 
@@ -758,9 +796,7 @@ def main():
     sep = f" {_c('sep')}│{R} "
     sep_vlen = 3  # visible: " │ "
 
-    # ── Context-adaptive: compress to 1 row when ctx is high ──
-    compact = ctx_pct >= COMPACT_CTX_THRESHOLD and len(rows_cfg) > 1
-    active_rows = [rows_cfg[0]] if compact else rows_cfg
+    active_rows = rows_cfg
 
     # ── Compute per-column label widths for alignment ──
     n_cols = max((len(r) for r in active_rows), default=0)
@@ -781,12 +817,6 @@ def main():
                 continue
             ctx["lw"] = col_lw[ci] if ci < len(col_lw) else 0
             cells.append(renderer(ctx))
-        if compact and row_idx == 0:
-            today_cost = g("today_cost") + g("today_ccost")
-            if today_cost > 0 and cells:
-                last_left, last_right = cells[-1]
-                last_left += f" {_c('compact')}{fcost(today_cost)}/d{R}"
-                cells[-1] = (last_left, last_right)
         all_rows.append(cells)
 
     # ── Compute aligned column widths across all rows ──
@@ -800,46 +830,30 @@ def main():
             if w > col_widths[i]:
                 col_widths[i] = w
 
-    # ── Check total width, progressively degrade if needed ──
+    # ── Adaptive: shrink bars → drop proj → drop columns ──
     total = sum(col_widths) + sep_vlen * max(0, max_cols - 1)
-    if total > cols:
-        # Pass 1: re-render without proj breakdowns
-        saved_ps = ctx["ps"]
-        ctx["ps"] = None
-        all_rows_trimmed = []
-        for row_items in active_rows:
-            cells = []
-            for ci, item_name in enumerate(row_items):
-                renderer = RENDERERS.get(item_name)
-                if not renderer:
-                    continue
-                ctx["lw"] = col_lw[ci] if ci < len(col_lw) else 0
-                cells.append(renderer(ctx))
-            all_rows_trimmed.append(cells)
-        ctx["ps"] = saved_ps
 
-        # Recompute widths
-        col_widths = [0] * max_cols
-        for cells in all_rows_trimmed:
+    def _compute_widths(rows, nc):
+        """Compute column widths and total."""
+        cw = [0] * nc
+        for cells in rows:
             for i, (left, right) in enumerate(cells):
+                if i >= nc:
+                    break
                 w = vlen(left)
                 if right:
                     w += 1 + vlen(right)
-                if w > col_widths[i]:
-                    col_widths[i] = w
+                if w > cw[i]:
+                    cw[i] = w
+        return cw, sum(cw) + sep_vlen * max(0, nc - 1)
 
-        total = sum(col_widths) + sep_vlen * max(0, max_cols - 1)
-
-        # Pass 2: drop trailing columns if still too wide
-        while total > cols and max_cols > 1:
-            max_cols -= 1
-            col_widths = col_widths[:max_cols]
-            for row in all_rows_trimmed:
-                while len(row) > max_cols:
-                    row.pop()
-            total = sum(col_widths) + sep_vlen * max(0, max_cols - 1)
-
-        all_rows = all_rows_trimmed
+    # ── Adaptive: only drop trailing columns, never adjust content ──
+    while total > cols and max_cols > 1:
+        max_cols -= 1
+        col_widths, total = _compute_widths(all_rows, max_cols)
+        for row in all_rows:
+            while len(row) > max_cols:
+                row.pop()
 
     # ── Output rows with aligned columns ──
     for cells in all_rows:
@@ -930,7 +944,7 @@ def init_config():
 
     default_cfg = {
         "rows": DEFAULT_LAYOUT,
-        "compact_threshold": COMPACT_CTX_THRESHOLD,
+        "columns": None,
         "colors": {},
         "pricing": PRICING_TABLE,
         "api": API_CONFIG,
@@ -942,9 +956,10 @@ def init_config():
     print()
     print("  Available items: 5h, 7d, model, session, today, week, month, path")
     print()
+    print("  columns: set your terminal width (e.g. 162) for optimal layout")
+    print("           null = auto-detect (120 fallback in piped mode)")
     print("  Pricing: $/million tokens — update when Anthropic changes rates")
     print("  API: endpoint + beta header for OAuth quota")
-    print(f"  Compact: auto-compress to 1 row when ctx ≥ {COMPACT_CTX_THRESHOLD}%")
 
 
 # ═══════════════════════════════════════
