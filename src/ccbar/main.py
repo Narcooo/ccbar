@@ -650,16 +650,14 @@ def render_total(ctx):
     gt, gp = ctx["g"], ctx["gp"]
     cwd = ctx["cwd"]
     gap = _label_gap(ctx, 5)  # "total" = 5
-    # Global all-time
+    # Global all-time: cost only
     g_cost = gt("all_cost") + gt("all_ccost")
-    left = (f"{_c('total')}total{R}{gap}"
-            f"{_tok_cache(gt('all_tok'), gt('all_cr_tok'), gt('all_in_tok'), pct=False)} "
-            f"{_c('cost')}{fcost(g_cost)}{R}")
-    # Project breakdown
+    left = f"{_c('total')}total{R}{gap}{_c('cost')}{fcost(g_cost)}{R}"
+    # Project breakdown: tokens + ♻cache (no %) + cost
     if gp("all_cost") + gp("all_ccost") > 0:
         p_cost = gp("all_cost") + gp("all_ccost")
         left += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
-                 f"{_tok_cache(gp('all_tok'), gp('all_cr_tok'), gp('all_in_tok'), pct=True)} "
+                 f"{_tok_cache(gp('all_tok'), gp('all_cr_tok'), gp('all_in_tok'), pct=False)} "
                  f"{_c('cost')}{fcost(p_cost)}{R}")
     short = shorten_path(cwd)
     right = f"{_c('dim')}{short}{R}"
@@ -703,13 +701,12 @@ def render_history(ctx):
     """Week tokens+cost · month tokens+cost, with proj breakdown."""
     gt, gp = ctx["g"], ctx["gp"]
     gap = _label_gap(ctx, 4)  # "week" = 4
-    # Week: proj tokens + global cost [› proj cost]
-    w_tok = gp("week_tok") if gp("week_tok") else gt("week_tok")
+    # Week: global cost [› proj tokens + cost]
     left = (f"{_c('week')}week{R}{gap}"
-            f"{_c('tok')}{fmt(w_tok)}{R} "
             f"{_c('cost')}{fcost(gt('week_cost') + gt('week_ccost'))}{R}")
     if gp("week_cost") + gp("week_ccost") > 0:
         left += (f" {_c('dim')}›{R} {_c('proj')}proj{R}"
+                 f" {_c('tok')}{fmt(gp('week_tok'))}{R}"
                  f" {_c('cost')}{fcost(gp('week_cost') + gp('week_ccost'))}{R}")
     # Month: tokens + cost [› proj cost]
     left += (f" {_c('sep')}│{R} "
