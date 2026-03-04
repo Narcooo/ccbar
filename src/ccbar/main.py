@@ -38,7 +38,7 @@ CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 # Available items: 5h, 7d, model, today, week, month, session, total
 DEFAULT_LAYOUT = [
     ["5h", "today", "week", "month"],
-    ["7d", "session", "total", "model"],
+    ["7d", "session", "total"],
 ]
 
 # ── Per-model pricing (USD per million tokens) ──
@@ -631,6 +631,11 @@ def render_session(ctx):
     dur = fmt_duration(dur_ms)
     if dur:
         s += f" {_c('dur')}{dur}{R}"
+
+    # Context percentage
+    ctx_pct = ctx["ctx_pct"]
+    if ctx_pct > 0:
+        s += f" {ctx_color(ctx_pct)}{ctx_pct}%{R}"
 
     # Lines → right-aligned
     right = f"{_c('lines+')}+{lines_add}{R}{_c('dim')}/{R}{_c('lines-')}-{lines_rm}{R}"
