@@ -650,16 +650,17 @@ def render_total(ctx):
     gt, gp = ctx["g"], ctx["gp"]
     cwd = ctx["cwd"]
     gap = _label_gap(ctx, 5)  # "total" = 5
-    # Use project stats if available, otherwise global
-    if gp("all_cost") + gp("all_ccost") > 0:
-        tok, cr, in_tok = gp("all_tok"), gp("all_cr_tok"), gp("all_in_tok")
-        cost = gp("all_cost") + gp("all_ccost")
-    else:
-        tok, cr, in_tok = gt("all_tok"), gt("all_cr_tok"), gt("all_in_tok")
-        cost = gt("all_cost") + gt("all_ccost")
+    # Global all-time
+    g_cost = gt("all_cost") + gt("all_ccost")
     left = (f"{_c('total')}total{R}{gap}"
-            f"{_tok_cache(tok, cr, in_tok, pct=True)} "
-            f"{_c('cost')}{fcost(cost)}{R}")
+            f"{_tok_cache(gt('all_tok'), gt('all_cr_tok'), gt('all_in_tok'), pct=False)} "
+            f"{_c('cost')}{fcost(g_cost)}{R}")
+    # Project breakdown
+    if gp("all_cost") + gp("all_ccost") > 0:
+        p_cost = gp("all_cost") + gp("all_ccost")
+        left += (f" {_c('dim')}›{R} {_c('proj')}proj{R} "
+                 f"{_tok_cache(gp('all_tok'), gp('all_cr_tok'), gp('all_in_tok'), pct=True)} "
+                 f"{_c('cost')}{fcost(p_cost)}{R}")
     short = shorten_path(cwd)
     right = f"{_c('dim')}{short}{R}"
     return left, right
@@ -702,9 +703,10 @@ def render_history(ctx):
     """Week tokens+cost · month tokens+cost, with proj breakdown."""
     gt, gp = ctx["g"], ctx["gp"]
     gap = _label_gap(ctx, 4)  # "week" = 4
-    # Week: tokens + cost [› proj cost]
+    # Week: proj tokens + global cost [› proj cost]
+    w_tok = gp("week_tok") if gp("week_tok") else gt("week_tok")
     left = (f"{_c('week')}week{R}{gap}"
-            f"{_c('tok')}{fmt(gt('week_tok'))}{R} "
+            f"{_c('tok')}{fmt(w_tok)}{R} "
             f"{_c('cost')}{fcost(gt('week_cost') + gt('week_ccost'))}{R}")
     if gp("week_cost") + gp("week_ccost") > 0:
         left += (f" {_c('dim')}›{R} {_c('proj')}proj{R}"
