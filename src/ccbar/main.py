@@ -534,11 +534,13 @@ def render_7d(ctx):
 
 
 def render_model(ctx):
-    """Model name + context %. Clock is rendered separately via right-align."""
+    """Model name + context %. Clock right-aligned within this column."""
     model = ctx["model"]
     ctx_pct = ctx["ctx_pct"]
+    now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
     left = f"{_c('model')}{model}{R} {ctx_color(ctx_pct)}ctx {ctx_pct}%{R}"
-    return left, ""
+    right = f"{_c('time')}{now_str}{R}"
+    return left, right
 
 
 def render_session(ctx):
@@ -707,11 +709,6 @@ def main():
     compact = ctx_pct >= COMPACT_CTX_THRESHOLD and len(rows_cfg) > 1
     active_rows = [rows_cfg[0]] if compact else rows_cfg
 
-    # ── Clock (right-aligned on row 1) ──
-    now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
-    clock = f"{_c('time')}{now_str}{R}"
-    clock_vlen = vlen(clock)
-
     for row_idx, row_items in enumerate(active_rows):
         cells = []
         for item_name in row_items:
@@ -740,12 +737,6 @@ def main():
             else:
                 parts.append(left)
         row_str = sep.join(parts)
-        row_vlen = vlen(row_str)
-
-        # ── Row 1: right-align clock to terminal edge ──
-        if row_idx == 0:
-            gap = max(1, cols - row_vlen - clock_vlen - 1)
-            row_str += " " * gap + clock
 
         # ── Width overflow: progressive truncation for non-row-1 ──
         if vlen(row_str) > cols and row_idx > 0:
