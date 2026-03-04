@@ -682,12 +682,11 @@ def _cost_total(base, cc):
 
 
 def render_today(ctx):
-    """Today: tokens + ♻cache + cost [› proj tokens + ♻cache/hit% + cost]."""
+    """Today: tokens + cost [› proj tokens + ♻cache/hit% + cost]."""
     gt, gp = ctx["g"], ctx["gp"]
     gap = _label_gap(ctx, 5)  # "today" = 5
-    # Total: tokens + cache (no %)
-    left = (f"{_c('today')}today{R}{gap}"
-            f"{_tok_cache(gt('today_tok'), gt('today_cr_tok'), gt('today_in_tok'), pct=False)}")
+    # Total: tokens only (no cache)
+    left = f"{_c('today')}today{R}{gap}{_c('tok')}{fmt(gt('today_tok'))}{R}"
     # Proj: tokens + cache/hit% + cost
     if gp("today_tok") or gp("today_cr_tok"):
         left += (f" {_cost_total(gt('today_cost'), gt('today_ccost'))}"
@@ -711,7 +710,7 @@ def render_history(ctx):
         left += (f" {_c('dim')}›{R}"
                  f" {_c('cost')}{fcost(gp('week_cost') + gp('week_ccost'))}{R}")
     # Month: tokens + cost [› proj cost]
-    left += (f" {_c('dim')}·{R} "
+    left += (f" {_c('sep')}│{R} "
              f"{_c('month')}month{R} "
              f"{_c('tok')}{fmt(gt('month_tok'))}{R} "
              f"{_c('cost')}{fcost(gt('month_cost') + gt('month_ccost'))}{R}")
