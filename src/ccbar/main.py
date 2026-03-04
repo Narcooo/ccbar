@@ -531,8 +531,8 @@ def proj_stats(tokens, pk):
 
 # Label text length per item (for computing column label alignment)
 ITEM_LABEL_LEN = {
-    "5h": 2, "7d": 2, "model": 7,  # "context"
-    "session": 7, "today": 5, "month": 5, "week": 4, "total": 5,
+    "5h": 2, "7d": 2, "model": 3,  # "ctx"
+    "session": 4, "today": 5, "month": 5, "week": 4, "total": 5,  # "sess"
 }
 
 
@@ -590,8 +590,8 @@ def render_model(ctx):
     model = ctx["model"]
     ctx_pct = ctx["ctx_pct"]
     now_str = datetime.now(LOCAL_TZ).strftime("%H:%M")
-    g = _label_gap(ctx, 7)  # "context" = 7
-    left = f"{_c('ctx')}context{R}{g}{ctx_color(ctx_pct)}{ctx_pct}%{R} {_c('model')}{model}{R}"
+    g = _label_gap(ctx, 3)  # "ctx" = 3
+    left = f"{_c('ctx')}ctx{R}{g}{ctx_color(ctx_pct)}{ctx_pct}%{R} {_c('model')}{model}{R}"
     right = f"{_c('time')}{now_str}{R}"
     return left, right
 
@@ -604,8 +604,8 @@ def render_session(ctx):
     lines_add = cost_data.get("total_lines_added", 0) or 0
     lines_rm = cost_data.get("total_lines_removed", 0) or 0
 
-    g = _label_gap(ctx, 7)  # "session" = 7
-    s = f"{_c('sess')}session{R}{g}{_c('cost')}{fcost(sess_cost)}{R}"
+    g = _label_gap(ctx, 4)  # "sess" = 4
+    s = f"{_c('sess')}sess{R}{g}{_c('cost')}{fcost(sess_cost)}{R}"
 
     # Burn rate: $/hour
     dur_hours = dur_ms / 3_600_000 if dur_ms else 0
