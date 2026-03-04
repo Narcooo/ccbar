@@ -34,10 +34,10 @@ HOME = os.path.expanduser("~")
 PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
 CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 
-# ── Default layout: 2 rows × 4 items ──
-# Available items: 5h, 7d, model, today, week, month, session, total
+# ── Default layout: 2 rows × 3 items ──
+# Available items: 5h, 7d, model, today, history, session, total
 DEFAULT_LAYOUT = [
-    ["5h", "today", "week", "month"],
+    ["5h", "today", "history"],
     ["7d", "session", "total"],
 ]
 
@@ -532,7 +532,7 @@ def proj_stats(tokens, pk):
 # Label text length per item (for computing column label alignment)
 ITEM_LABEL_LEN = {
     "5h": 2, "7d": 2, "model": 3,  # "ctx"
-    "session": 4, "today": 5, "month": 5, "week": 4, "total": 5,  # "sess"
+    "session": 4, "today": 5, "history": 4, "total": 5,  # "sess", "week"
 }
 
 
@@ -692,33 +692,16 @@ def render_today(ctx):
     return left, right
 
 
-def render_week(ctx):
-    """Week: tokens + cost [› proj ...]."""
-    gt, gp = ctx["g"], ctx["gp"]
+def render_history(ctx):
+    """Week + month costs in one column."""
+    gt = ctx["g"]
     gap = _label_gap(ctx, 4)  # "week" = 4
-    left = f"{_c('week')}week{R}{gap}{_c('tok')}{fmt(gt('week_tok'))}{R}"
-    if gp("week_tok"):
-        left += (f" {_cost_total(gt('week_cost'), gt('week_ccost'))}"
-                 f" {_c('dim')}›{R} {_c('proj')}proj{R} "
-                 f"{_c('tok')}{fmt(gp('week_tok'))}{R}")
-        right = _cost_total(gp('week_cost'), gp('week_ccost'))
-    else:
-        right = _cost_total(gt('week_cost'), gt('week_ccost'))
-    return left, right
-
-
-def render_month(ctx):
-    """Month: tokens + cost [› proj cost]."""
-    gt, gp = ctx["g"], ctx["gp"]
-    gap = _label_gap(ctx, 5)  # "month" = 5
-    left = f"{_c('month')}month{R}{gap}{_c('tok')}{fmt(gt('month_tok'))}{R}"
-    if gp("month_cost") + gp("month_ccost") > 0:
-        left += (f" {_cost_total(gt('month_cost'), gt('month_ccost'))}"
-                 f" {_c('dim')}›{R} {_c('proj')}proj{R}")
-        right = _cost_total(gp('month_cost'), gp('month_ccost'))
-    else:
-        right = _cost_total(gt('month_cost'), gt('month_ccost'))
-    return left, right
+    w_cost = gt("week_cost") + gt("week_ccost")
+    m_cost = gt("month_cost") + gt("month_ccost")
+    left = (f"{_c('week')}week{R}{gap}{_c('cost')}{fcost(w_cost)}{R}"
+            f" {_c('dim')}·{R} "
+            f"{_c('month')}month{R} {_c('cost')}{fcost(m_cost)}{R}")
+    return left, ""
 
 
 RENDERERS = {
@@ -726,8 +709,7 @@ RENDERERS = {
     "7d":      render_7d,
     "model":   render_model,
     "today":   render_today,
-    "week":    render_week,
-    "month":   render_month,
+    "history": render_history,
     "session": render_session,
     "total":   render_total,
 }
@@ -971,7 +953,7 @@ def init_config():
         json.dump(default_cfg, f, indent=2)
     print(f"✓ Created config: {CONFIG_PATH}")
     print()
-    print("  Available items: 5h, 7d, model, session, today, week, month, total")
+    print("  Available items: 5h, 7d, model, session, today, history, total")
     print()
     print("  columns: set your terminal width (e.g. 162) for optimal layout")
     print("           null = auto-detect (120 fallback in piped mode)")
@@ -1002,7 +984,7 @@ def cli():
         print("  ccbar --init-config  Create default config at ~/.config/ccbar.json")
         print("  ccbar --version      Print version")
         print()
-        print("Layout items: 5h, 7d, model, today, week, month, session, total")
+        print("Layout items: 5h, 7d, model, today, history, session, total")
         print()
         print("Environment:")
         print("  CCBAR_LAYOUT         Row layout (e.g. '5h,7d,model|today,week,month')")
