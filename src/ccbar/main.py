@@ -645,11 +645,15 @@ def render_path(ctx):
     return f"{_c('path')}path{R}{gap}{_c('dim')}{short}{R}", ""
 
 
-def _tok_cache(tok, cr):
-    """Format: token_count [♻cache_read]."""
+def _tok_cache(tok, cr, in_tok, pct=True):
+    """Format: token_count [♻cache_read or ♻cache_read/hit%]."""
     s = f"{_c('tok')}{fmt(tok)}{R}"
     if cr > 0:
         s += f" {_c('cache')}♻{R}{_c('hit')}{fmt(cr)}{R}"
+        if pct and in_tok > 0:
+            total_in = cr + in_tok
+            hit = int(cr * 100 / total_in) if total_in > 0 else 0
+            s += f"{_c('cache')}/{hit}%{R}"
     return s
 
 
@@ -658,15 +662,17 @@ def _cost_total(base, cc):
 
 
 def render_today(ctx):
-    """Today: tokens + cost [› proj tokens + cache/hit% + cost]."""
+    """Today: tokens + ♻cache + cost [› proj tokens + ♻cache/hit% + cost]."""
     gt, gp = ctx["g"], ctx["gp"]
     gap = _label_gap(ctx, 5)  # "today" = 5
-    left = f"{_c('today')}today{R}{gap}{_c('tok')}{fmt(gt('today_tok'))}{R}"
+    # Total: tokens + cache (no %)
+    left = (f"{_c('today')}today{R}{gap}"
+            f"{_tok_cache(gt('today_tok'), gt('today_cr_tok'), gt('today_in_tok'), pct=False)}")
     # Proj: tokens + cache/hit% + cost
     if gp("today_tok") or gp("today_cr_tok"):
         left += (f" {_cost_total(gt('today_cost'), gt('today_ccost'))}"
                  f" {_c('dim')}›{R} {_c('proj')}proj{R} "
-                 f"{_tok_cache(gp('today_tok'), gp('today_cr_tok'))}")
+                 f"{_tok_cache(gp('today_tok'), gp('today_cr_tok'), gp('today_in_tok'), pct=True)}")
         right = _cost_total(gp('today_cost'), gp('today_ccost'))
     else:
         right = _cost_total(gt('today_cost'), gt('today_ccost'))
