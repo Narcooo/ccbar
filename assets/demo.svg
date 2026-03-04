@@ -76,7 +76,8 @@
   <tspan fill="#50dcaa" font-weight="bold"> Opus 4.6</tspan>
   <tspan fill="#f0aa6e" font-weight="bold"> 17:37</tspan>
   <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#6e9bc8" font-weight="bold">path</tspan>
-  <tspan fill="#78788c" font-weight="bold"> ~/myproject</tspan>
+  <tspan fill="#6e9bc8" font-weight="bold">total</tspan>
+  <tspan fill="#ffd23c" font-weight="bold"> $1.0k</tspan>
+  <tspan fill="#78788c"> ~/myproject</tspan>
   </text>
 </svg>

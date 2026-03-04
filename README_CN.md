@@ -40,7 +40,7 @@ ccbar --install
 | 行 | 内容 |
 |----|------|
 | **1** | `5h` 配额条 + 倒计时 · `today` token + ♻缓存 + 费用 › 项目细分 · `week` 总计 · `month` 总计 |
-| **2** | `7d` 配额条 + 倒计时 · `session` 费用 + 燃烧率 + 预测 + 时长 + 代码行 · `context`% + 模型 + 时钟 · `path` |
+| **2** | `7d` 配额条 + 倒计时 · `session` 费用 + 燃烧率 + 预测 + 时长 + 代码行 · `context`% + 模型 + 时钟 · `total` 项目总成本 + 路径 |
 
 终端太窄？尾部列自动裁掉，列内内容永不修改。
 
@@ -61,7 +61,7 @@ ccbar --install
 ## 配置
 
 ```bash
-export CCBAR_LAYOUT="5h,today,week,month|7d,session,model,path"
+export CCBAR_LAYOUT="5h,today,week,month|7d,session,model,total"
 # 或
 ccbar --init-config   # → ~/.config/ccbar.json
 ```
@@ -71,7 +71,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 
 ```json
 {
-  "rows": [["5h", "today", "week", "month"], ["7d", "session", "model", "path"]],
+  "rows": [["5h", "today", "week", "month"], ["7d", "session", "model", "total"]],
   "columns": null,
   "colors": {},
   "pricing": {
@@ -84,7 +84,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 
 | 字段 | 说明 |
 |------|------|
-| `rows` | 布局网格——可用项: `5h` `7d` `today` `week` `month` `session` `model` `path` |
+| `rows` | 布局网格——可用项: `5h` `7d` `today` `week` `month` `session` `model` `total` |
 | `columns` | 覆盖终端宽度（`null` = 自动检测） |
 | `pricing` | 每百万 token 价格 |
 | `colors` | `[R, G, B]` 颜色覆盖 |

@@ -34,11 +34,11 @@ HOME = os.path.expanduser("~")
 PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
 CONFIG_PATH = os.path.join(HOME, ".config", "ccbar.json")
 
-# ── Default layout: 2 rows × 3 items ──
-# Available items: 5h, 7d, model, today, week, month, session, path
+# ── Default layout: 2 rows × 4 items ──
+# Available items: 5h, 7d, model, today, week, month, session, total
 DEFAULT_LAYOUT = [
     ["5h", "today", "week", "month"],
-    ["7d", "session", "model", "path"],
+    ["7d", "session", "model", "total"],
 ]
 
 # ── Per-model pricing (USD per million tokens) ──
@@ -99,7 +99,7 @@ COLORS = {
     "dim":    (120, 120, 140),   # dim text
     "paren":  (70, 70, 80),      # parentheses
     "empty":  (45, 45, 45),      # empty bar segments
-    "path":   (110, 155, 200),   # path (blue family)
+    "total":  (110, 155, 200),   # total label (blue family)
     "lines+": (80, 210, 100),    # lines added (green)
     "lines-": (220, 90, 90),     # lines removed (red)
 }
@@ -532,7 +532,7 @@ def proj_stats(tokens, pk):
 # Label text length per item (for computing column label alignment)
 ITEM_LABEL_LEN = {
     "5h": 2, "7d": 2, "model": 7,  # "context"
-    "session": 7, "today": 5, "month": 5, "week": 4, "path": 4,
+    "session": 7, "today": 5, "month": 5, "week": 4, "total": 5,
 }
 
 
@@ -637,12 +637,20 @@ def render_session(ctx):
     return s, right
 
 
-def render_path(ctx):
-    """Current working directory (shortened)."""
+def render_total(ctx):
+    """Project total cost (month) + working directory path."""
+    gt, gp = ctx["g"], ctx["gp"]
     cwd = ctx["cwd"]
-    gap = _label_gap(ctx, 4)  # "path" = 4
+    gap = _label_gap(ctx, 5)  # "total" = 5
+    # Project cost if available, otherwise global month cost
+    if gp("month_cost") + gp("month_ccost") > 0:
+        cost = gp("month_cost") + gp("month_ccost")
+    else:
+        cost = gt("month_cost") + gt("month_ccost")
+    left = f"{_c('total')}total{R}{gap}{_c('cost')}{fcost(cost)}{R}"
     short = shorten_path(cwd)
-    return f"{_c('path')}path{R}{gap}{_c('dim')}{short}{R}", ""
+    right = f"{_c('dim')}{short}{R}"
+    return left, right
 
 
 def _tok_cache(tok, cr, in_tok, pct=True):
@@ -716,7 +724,7 @@ RENDERERS = {
     "week":    render_week,
     "month":   render_month,
     "session": render_session,
-    "path":    render_path,
+    "total":   render_total,
 }
 
 
@@ -958,7 +966,7 @@ def init_config():
         json.dump(default_cfg, f, indent=2)
     print(f"✓ Created config: {CONFIG_PATH}")
     print()
-    print("  Available items: 5h, 7d, model, session, today, week, month, path")
+    print("  Available items: 5h, 7d, model, session, today, week, month, total")
     print()
     print("  columns: set your terminal width (e.g. 162) for optimal layout")
     print("           null = auto-detect (120 fallback in piped mode)")
@@ -989,7 +997,7 @@ def cli():
         print("  ccbar --init-config  Create default config at ~/.config/ccbar.json")
         print("  ccbar --version      Print version")
         print()
-        print("Layout items: 5h, 7d, model, today, week, month, session, path")
+        print("Layout items: 5h, 7d, model, today, week, month, session, total")
         print()
         print("Environment:")
         print("  CCBAR_LAYOUT         Row layout (e.g. '5h,7d,model|today,week,month')")

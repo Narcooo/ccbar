@@ -40,7 +40,7 @@ Restart Claude Code. Two lines appear at the bottom. Done.
 | Row | Content |
 |-----|---------|
 | **1** | `5h` quota bar + countdown · `today` tokens + ♻cache + cost › per-project breakdown · `week` total · `month` total |
-| **2** | `7d` quota bar + countdown · `session` cost + $/h burn rate + →projection + duration + lines changed · `context`% + model + clock · `path` |
+| **2** | `7d` quota bar + countdown · `session` cost + $/h burn rate + →projection + duration + lines changed · `context`% + model + clock · `total` project cost + path |
 
 Terminal too narrow? Trailing columns drop automatically. Content within columns is never modified.
 
@@ -61,7 +61,7 @@ Terminal too narrow? Trailing columns drop automatically. Content within columns
 ## Configure
 
 ```bash
-export CCBAR_LAYOUT="5h,today,week,month|7d,session,model,path"
+export CCBAR_LAYOUT="5h,today,week,month|7d,session,model,total"
 # or
 ccbar --init-config   # → ~/.config/ccbar.json
 ```
@@ -71,7 +71,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 
 ```json
 {
-  "rows": [["5h", "today", "week", "month"], ["7d", "session", "model", "path"]],
+  "rows": [["5h", "today", "week", "month"], ["7d", "session", "model", "total"]],
   "columns": null,
   "colors": {},
   "pricing": {
@@ -84,7 +84,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 
 | Field | Description |
 |-------|-------------|
-| `rows` | Layout grid — items: `5h` `7d` `today` `week` `month` `session` `model` `path` |
+| `rows` | Layout grid — items: `5h` `7d` `today` `week` `month` `session` `model` `total` |
 | `columns` | Override terminal width (`null` = auto-detect) |
 | `pricing` | $/million tokens per model |
 | `colors` | `[R, G, B]` overrides |
