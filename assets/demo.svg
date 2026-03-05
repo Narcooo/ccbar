@@ -152,17 +152,17 @@
   <!-- Sep 1 + Col 2: today -->
   <text y="450" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="220" fill="#3c3c46">│ </tspan><tspan fill="#4178af">today</tspan><tspan fill="#c8d2e6"> 1.8M</tspan><tspan fill="#ffd23c"> $42</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#c8d2e6"> 480k</tspan><tspan fill="#aa916e"> ♻</tspan><tspan fill="#c8aa64">8M</tspan><tspan fill="#aa916e">/94%</tspan><tspan fill="#ffd23c"> $18</tspan></text>
   <!-- Sep 2 + Col 3: week -->
-  <text y="450" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="500" fill="#3c3c46">│ </tspan><tspan fill="#4b73a5">week</tspan><tspan fill="#ffd23c"> $180</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#c8d2e6"> 1.2M</tspan><tspan fill="#ffd23c"> $86</tspan></text>
+  <text y="450" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="500" fill="#3c3c46">│ </tspan><tspan fill="#4b73a5">week</tspan><tspan fill="#ffd23c">  $180</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#c8d2e6"> 1.2M</tspan><tspan fill="#ffd23c">  $86</tspan></text>
   <!-- Sep 3 + Col 4: month -->
-  <text y="450" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="690" fill="#3c3c46">│ </tspan><tspan fill="#5564a0">month</tspan><tspan fill="#c8d2e6"> 4.2M</tspan><tspan fill="#ffd23c"> $210</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#ffd23c"> $96</tspan></text>
+  <text y="450" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="720" fill="#3c3c46">│ </tspan><tspan fill="#5564a0">month</tspan><tspan fill="#c8d2e6"> 4.2M</tspan><tspan fill="#ffd23c"> $210</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#ffd23c"> $96</tspan></text>
 
   <!-- ═══ ccbar Row 2: 7d │ sess │ total ═══ -->
   <!-- Col 1: 7d bar -->
   <text y="472" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="16" fill="#466eb4">7d</tspan><tspan fill="#c8d2e6"> </tspan><tspan fill="#3be623">━</tspan><tspan fill="#6ce623">━</tspan><tspan fill="#2d2d2d">────────</tspan><tspan fill="#43e623"> 25%</tspan><tspan fill="#aa96e6">  5d8h</tspan></text>
   <!-- Sep 1 + Col 2: sess -->
-  <text y="472" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="220" fill="#3c3c46">│ </tspan><tspan fill="#5069aa">sess</tspan><tspan fill="#ffd23c"> $8.50</tspan><tspan fill="#ffbe32"> $4/h</tspan><tspan fill="#f0b432"> →$12</tspan><tspan fill="#b49bdc"> 2h0m</tspan><tspan fill="#db8d56"> 42%</tspan><tspan fill="#50d264"> +320</tspan><tspan fill="#78788c">/</tspan><tspan fill="#dc5a5a">-85</tspan></text>
+  <text y="472" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="220" fill="#3c3c46">│ </tspan><tspan fill="#5069aa">sess</tspan><tspan fill="#ffd23c">  $8.50</tspan><tspan fill="#ffbe32"> $4/h</tspan><tspan fill="#f0b432"> →$12</tspan><tspan fill="#b49bdc"> 2h0m</tspan><tspan fill="#db8d56"> 42%</tspan><tspan fill="#50d264"> +320</tspan><tspan fill="#78788c">/</tspan><tspan fill="#dc5a5a">-85</tspan></text>
   <!-- Sep 2 + Col 3: total -->
-  <text y="472" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="500" fill="#3c3c46">│ </tspan><tspan fill="#6e9bc8">total</tspan><tspan fill="#ffd23c"> $210</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#c8d2e6"> 1.8M</tspan><tspan fill="#aa916e"> ♻</tspan><tspan fill="#c8aa64">32M</tspan><tspan fill="#ffd23c"> $96</tspan><tspan fill="#78788c"> ~/myproject</tspan></text>
+  <text y="472" xml:space="preserve" class="mono" font-size="11" font-weight="bold"><tspan x="500" fill="#3c3c46">│ </tspan><tspan fill="#6e9bc8">total</tspan><tspan fill="#ffd23c"> $210</tspan><tspan fill="#78788c"> ›</tspan><tspan fill="#ff8c50"> proj</tspan><tspan fill="#c8d2e6"> 1.8M</tspan><tspan fill="#aa916e">  ♻</tspan><tspan fill="#c8aa64">32M</tspan><tspan fill="#ffd23c"> $96</tspan><tspan fill="#78788c"> ~/myproject</tspan></text>
 
   <!-- ═══ Row 3: Claude Code native status ═══ -->
   <rect y="496" width="920" height="24" fill="#0d1117"/>
