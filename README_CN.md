@@ -7,17 +7,17 @@
 <br>
 <br>
 
-**从 vibe coding 到成本可控的工程实践。**
+**Claude Code 实时成本追踪与配额监控。**
 
 零依赖 · 纯 Python 标准库 · 一行 `pip install` 搞定
 
 [![PyPI](https://img.shields.io/pypi/v/ccbar?style=flat-square&color=blue)](https://pypi.org/project/ccbar/)
 [![Downloads](https://img.shields.io/pypi/dm/ccbar?style=flat-square&color=green)](https://pypi.org/project/ccbar/)
 [![Python](https://img.shields.io/pypi/pyversions/ccbar?style=flat-square)](https://pypi.org/project/ccbar/)
-[![License](https://img.shields.io/github/license/Narcooo/ccbar?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square)
 
-[![English](https://img.shields.io/badge/lang-English-grey?style=flat-square)](README.md)
+[![English](https://img.shields.io/badge/lang-English-grey?style=flat-square)](./README.md)
 [![中文](https://img.shields.io/badge/lang-中文-blue?style=flat-square)](#)
 
 </div>

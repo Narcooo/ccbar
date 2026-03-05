@@ -7,18 +7,18 @@
 <br>
 <br>
 
-**From vibe coding to cost-conscious engineering.**
+**Real-time cost tracking and quota monitoring for Claude Code.**
 
 Zero dependencies. Pure Python stdlib. One `pip install` and you're done.
 
 [![PyPI](https://img.shields.io/pypi/v/ccbar?style=flat-square&color=blue)](https://pypi.org/project/ccbar/)
 [![Downloads](https://img.shields.io/pypi/dm/ccbar?style=flat-square&color=green)](https://pypi.org/project/ccbar/)
 [![Python](https://img.shields.io/pypi/pyversions/ccbar?style=flat-square)](https://pypi.org/project/ccbar/)
-[![License](https://img.shields.io/github/license/Narcooo/ccbar?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square)
 
 [![English](https://img.shields.io/badge/lang-English-blue?style=flat-square)](#)
-[![中文](https://img.shields.io/badge/lang-中文-grey?style=flat-square)](README_CN.md)
+[![中文](https://img.shields.io/badge/lang-中文-grey?style=flat-square)](./README_CN.md)
 
 </div>
 

@@ -336,19 +336,30 @@ def get_oauth_token():
         return ""
 
 
-def fetch_quota():
-    """Fetch OAuth quota with TTL cache."""
+def _read_cache(path):
+    """Read JSON cache file, return data or None."""
     try:
-        if os.path.exists(QUOTA_CACHE):
-            if time.time() - os.path.getmtime(QUOTA_CACHE) < QUOTA_TTL:
-                with open(QUOTA_CACHE, "r") as f:
-                    return json.load(f)
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
     except (OSError, json.JSONDecodeError):
         pass
+    return None
+
+
+def fetch_quota():
+    """Fetch OAuth quota with TTL cache + stale fallback on error."""
+    cached = _read_cache(QUOTA_CACHE)
+    if cached is not None:
+        try:
+            if time.time() - os.path.getmtime(QUOTA_CACHE) < QUOTA_TTL:
+                return cached
+        except OSError:
+            pass
 
     token = get_oauth_token()
     if not token:
-        return None
+        return cached  # stale > nothing
 
     try:
         import urllib.request
@@ -362,7 +373,7 @@ def fetch_quota():
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
     except Exception:
-        return None
+        return cached  # stale > nothing
 
     try:
         with open(QUOTA_CACHE, "w") as f:
