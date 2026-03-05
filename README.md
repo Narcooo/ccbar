@@ -147,6 +147,6 @@ ccbar --uninstall && pip uninstall ccbar
 
 <div align="center">
 
-MIT · For developers who treat AI compute as a budget line item.
+MIT
 
 </div>

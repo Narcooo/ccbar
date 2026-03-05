@@ -147,6 +147,6 @@ ccbar --uninstall && pip uninstall ccbar
 
 <div align="center">
 
-MIT · 为把 AI 算力当预算科目的开发者而做。
+MIT
 
 </div>
