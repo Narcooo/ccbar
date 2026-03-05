@@ -7,9 +7,9 @@
 <br>
 <br>
 
-**Claude Code 实时成本追踪与配额监控。**
+**Vibe coding 不再只是玩玩而已。你得知道花了多少。**
 
-零依赖 · 纯 Python 标准库 · 一行 `pip install` 搞定
+Claude Code 实时成本追踪与配额监控，零依赖。
 
 [![PyPI](https://img.shields.io/pypi/v/ccbar?style=flat-square&color=blue)](https://pypi.org/project/ccbar/)
 [![Downloads](https://img.shields.io/pypi/dm/ccbar?style=flat-square&color=green)](https://pypi.org/project/ccbar/)

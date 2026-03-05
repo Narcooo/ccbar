@@ -7,9 +7,9 @@
 <br>
 <br>
 
-**Real-time cost tracking and quota monitoring for Claude Code.**
+**Vibe coding is no longer just for fun. Know what it costs.**
 
-Zero dependencies. Pure Python stdlib. One `pip install` and you're done.
+Real-time cost tracking and quota monitoring for Claude Code. Zero dependencies.
 
 [![PyPI](https://img.shields.io/pypi/v/ccbar?style=flat-square&color=blue)](https://pypi.org/project/ccbar/)
 [![Downloads](https://img.shields.io/pypi/dm/ccbar?style=flat-square&color=green)](https://pypi.org/project/ccbar/)

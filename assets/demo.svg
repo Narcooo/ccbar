@@ -1,9 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" width="920" height="520">
   <defs>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap');
-      .mono { font-family: 'JetBrains Mono','SF Mono','Fira Code','Cascadia Code','Menlo','Consolas',monospace; }
+      .mono { font-family: 'SF Mono','Fira Code','Cascadia Code','Menlo','Consolas',monospace; }
     </style>
+    <!-- 5h bar gradient: green → yellow → red -->
+    <linearGradient id="g5h" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#3be623"/>
+      <stop offset="25%" stop-color="#9de623"/>
+      <stop offset="50%" stop-color="#e6ce23"/>
+      <stop offset="75%" stop-color="#e69d23"/>
+      <stop offset="100%" stop-color="#e63b23"/>
+    </linearGradient>
+    <!-- 7d bar gradient: green only -->
+    <linearGradient id="g7d" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#3be623"/>
+      <stop offset="100%" stop-color="#9de623"/>
+    </linearGradient>
   </defs>
 
   <!-- Window frame -->
@@ -19,11 +31,11 @@
   <circle cx="60" cy="19" r="6" fill="#28c840"/>
 
   <!-- Title bar text -->
-  <text x="460" y="24" text-anchor="middle" fill="#7d8590" class="mono" font-size="12" font-weight="400">claude — ~/myproject</text>
+  <text x="460" y="24" text-anchor="middle" fill="#7d8590" class="mono" font-size="12">claude — ~/myproject</text>
 
   <!-- ═══ Terminal content area ═══ -->
 
-  <!-- User prompt area -->
+  <!-- User prompt -->
   <text y="68" class="mono" font-size="13">
     <tspan x="20" fill="#7d8590">╭─────────────────────────────────────────────────────────────────────────────────╮</tspan>
   </text>
@@ -46,8 +58,7 @@
 
   <!-- File operation -->
   <text y="170" class="mono" font-size="13">
-    <tspan x="20" fill="#7d8590">  </tspan>
-    <tspan fill="#58a6ff">Edit</tspan>
+    <tspan x="36" fill="#58a6ff">Edit</tspan>
     <tspan fill="#7d8590"> src/middleware/rate-limiter.ts</tspan>
   </text>
 
@@ -127,91 +138,113 @@
     <tspan fill="#3fb950">+47</tspan>
     <tspan fill="#7d8590"> lines</tspan>
   </text>
-
   <text y="412" class="mono" font-size="13">
     <tspan x="20" fill="#d2a8ff">⏵</tspan>
     <tspan fill="#c9d1d9"> Now adding the middleware to the Express app and writing tests...</tspan>
   </text>
 
   <!-- ═══ Separator line ═══ -->
-  <line x1="0" y1="437" x2="920" y2="437" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="0" y1="432" x2="920" y2="432" stroke="#21262d" stroke-width="0.5"/>
 
-  <!-- ═══ ccbar Row 1 ═══ -->
-  <text y="460" xml:space="preserve" class="mono" font-size="12.5">
-  <tspan x="16" fill="#466eb4" font-weight="bold">5h</tspan>
-  <tspan fill="#c8d2e6"> </tspan>
-  <tspan fill="#3be623">━</tspan>
-  <tspan fill="#6ce623">━</tspan>
-  <tspan fill="#9de623">━</tspan>
-  <tspan fill="#cee623">━</tspan>
-  <tspan fill="#e6ce23">━</tspan>
-  <tspan fill="#e69d23">━</tspan>
-  <tspan fill="#e66c23">━</tspan>
-  <tspan fill="#e63b23">╸</tspan>
-  <tspan fill="#2d2d2d">──</tspan>
-  <tspan fill="#e66423" font-weight="bold"> 78%</tspan>
-  <tspan fill="#aa96e6" font-weight="bold"> 1h22m</tspan>
-  <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#4178af" font-weight="bold">today</tspan>
-  <tspan fill="#c8d2e6" font-weight="bold"> 6.2M</tspan>
-  <tspan fill="#aa916e" font-weight="bold"> ♻</tspan>
-  <tspan fill="#c8aa64" font-weight="bold">168M</tspan>
-  <tspan fill="#ffd23c" font-weight="bold"> $328</tspan>
-  <tspan fill="#78788c" font-weight="bold"> ›</tspan>
-  <tspan fill="#ff8c50" font-weight="bold"> proj</tspan>
-  <tspan fill="#c8d2e6" font-weight="bold"> 1.6M</tspan>
-  <tspan fill="#aa916e" font-weight="bold"> ♻</tspan>
-  <tspan fill="#c8aa64" font-weight="bold">56M</tspan>
-  <tspan fill="#aa916e" font-weight="bold">/97%</tspan>
-  <tspan fill="#ffd23c" font-weight="bold"> $124</tspan>
-  <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#4b73a5" font-weight="bold">week</tspan>
-  <tspan fill="#c8d2e6" font-weight="bold">  21M</tspan>
-  <tspan fill="#ffd23c" font-weight="bold">   $990</tspan>
-  <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#5564a0" font-weight="bold">month</tspan>
-  <tspan fill="#c8d2e6" font-weight="bold"> 22M</tspan>
-  <tspan fill="#ffd23c" font-weight="bold">  $1.0k</tspan>
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!--  ccbar status lines — table-aligned columns            -->
+  <!--  Col separators │ at x=148, x=470, x=630              -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+
+  <!-- 5h progress bar (SVG rect): 78% of 72px = 56px filled -->
+  <rect x="34" y="446.5" width="72" height="4.5" rx="2" fill="#2d2d2d"/>
+  <rect x="34" y="446.5" width="56" height="4.5" rx="2" fill="url(#g5h)"/>
+
+  <!-- 7d progress bar (SVG rect): 29% of 72px = 21px filled -->
+  <rect x="34" y="466.5" width="72" height="4.5" rx="2" fill="#2d2d2d"/>
+  <rect x="34" y="466.5" width="21" height="4.5" rx="2" fill="url(#g7d)"/>
+
+  <!-- ═══ Row 1 ═══ -->
+  <!-- Col 1: 5h quota -->
+  <text y="456" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="16" fill="#466eb4">5h</tspan>
+  </text>
+  <text y="456" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="110" fill="#e66423">78%</tspan>
+    <tspan fill="#aa96e6"> 1h22m</tspan>
   </text>
 
-  <!-- ═══ ccbar Row 2 ═══ -->
-  <text y="482" xml:space="preserve" class="mono" font-size="12.5">
-  <tspan x="16" fill="#466eb4" font-weight="bold">7d</tspan>
-  <tspan fill="#c8d2e6"> </tspan>
-  <tspan fill="#3be623">━</tspan>
-  <tspan fill="#6ce623">━</tspan>
-  <tspan fill="#9de623">╸</tspan>
-  <tspan fill="#2d2d2d" font-weight="bold">───────</tspan>
-  <tspan fill="#43e623" font-weight="bold"> 29%</tspan>
-  <tspan fill="#aa96e6" font-weight="bold"> 5d21h</tspan>
-  <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#5069aa" font-weight="bold">session</tspan>
-  <tspan fill="#ffd23c" font-weight="bold"> $8.50</tspan>
-  <tspan fill="#ffbe32" font-weight="bold"> $8.50/h</tspan>
-  <tspan fill="#f0b432" font-weight="bold"> →$18</tspan>
-  <tspan fill="#b49bdc" font-weight="bold"> 1h0m</tspan>
-  <tspan fill="#50d264" font-weight="bold"> +250</tspan>
-  <tspan fill="#78788c" font-weight="bold">/</tspan>
-  <tspan fill="#dc5a5a" font-weight="bold">-40</tspan>
-  <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#3c7db9" font-weight="bold">context</tspan>
-  <tspan fill="#db8d56" font-weight="bold"> 42%</tspan>
-  <tspan fill="#50dcaa" font-weight="bold"> Opus 4.6</tspan>
-  <tspan fill="#f0aa6e" font-weight="bold"> 17:37</tspan>
-  <tspan fill="#3c3c46" font-weight="bold"> │ </tspan>
-  <tspan fill="#6e9bc8" font-weight="bold">total</tspan>
-  <tspan fill="#ffd23c" font-weight="bold"> $1.0k</tspan>
-  <tspan fill="#78788c"> ~/myproject</tspan>
+  <!-- Sep 1 -->
+  <text y="456" class="mono" font-size="12.5"><tspan x="178" fill="#3c3c46">│</tspan></text>
+  <text y="476" class="mono" font-size="12.5"><tspan x="178" fill="#3c3c46">│</tspan></text>
+
+  <!-- Col 2: today / session -->
+  <text y="456" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="190" fill="#4178af">today</tspan>
+    <tspan fill="#c8d2e6"> 2.2M</tspan>
+    <tspan fill="#ffd23c"> $93.0</tspan>
+    <tspan fill="#78788c"> ›</tspan>
+    <tspan fill="#ff8c50"> proj</tspan>
+    <tspan fill="#c8d2e6"> 1.1M</tspan>
+    <tspan fill="#aa916e"> ♻</tspan>
+    <tspan fill="#c8aa64">9.0M</tspan>
+    <tspan fill="#aa916e">/90%</tspan>
+    <tspan fill="#ffd23c"> $30.9</tspan>
   </text>
 
-  <!-- Bottom context bar simulation -->
-  <rect y="496" width="920" height="24" fill="#0d1117"/>
-  <!-- bottom rounded corners -->
+  <text y="476" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="190" fill="#5069aa">sess</tspan>
+    <tspan fill="#ffd23c">  $132</tspan>
+    <tspan fill="#ffbe32"> $3.61/h</tspan>
+    <tspan fill="#b49bdc"> 1d12h</tspan>
+    <tspan fill="#db8d56"> 66%</tspan>
+    <tspan fill="#50d264">    +9096</tspan>
+    <tspan fill="#78788c">/</tspan>
+    <tspan fill="#dc5a5a">-2733</tspan>
+  </text>
+
+  <!-- Sep 2 -->
+  <text y="456" class="mono" font-size="12.5"><tspan x="498" fill="#3c3c46">│</tspan></text>
+  <text y="476" class="mono" font-size="12.5"><tspan x="498" fill="#3c3c46">│</tspan></text>
+
+  <!-- Col 3: week / total -->
+  <text y="456" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="510" fill="#4b73a5">week</tspan>
+    <tspan fill="#ffd23c">  $1.1k</tspan>
+    <tspan fill="#78788c"> ›</tspan>
+    <tspan fill="#ff8c50"> proj</tspan>
+    <tspan fill="#c8d2e6"> 17.1M</tspan>
+    <tspan fill="#ffd23c"> $741</tspan>
+  </text>
+
+  <text y="476" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="510" fill="#6e9bc8">total</tspan>
+    <tspan fill="#ffd23c"> $7.1k</tspan>
+    <tspan fill="#78788c"> ›</tspan>
+    <tspan fill="#ff8c50"> proj</tspan>
+    <tspan fill="#c8d2e6"> 187M</tspan>
+    <tspan fill="#aa916e"> ♻</tspan>
+    <tspan fill="#c8aa64">1.5B</tspan>
+    <tspan fill="#ffd23c"> $5.0k</tspan>
+  </text>
+
+  <!-- Sep 3 (row 1 only) -->
+  <text y="456" class="mono" font-size="12.5"><tspan x="728" fill="#3c3c46">│</tspan></text>
+
+  <!-- Col 4: month (row 1) / path (row 2) -->
+  <text y="456" class="mono" font-size="12.5" font-weight="bold">
+    <tspan x="740" fill="#5564a0">month</tspan>
+    <tspan fill="#c8d2e6"> 24.4M</tspan>
+    <tspan fill="#ffd23c"> $1.1k</tspan>
+    <tspan fill="#78788c"> ›</tspan>
+    <tspan fill="#ff8c50"> proj</tspan>
+    <tspan fill="#ffd23c"> $758</tspan>
+  </text>
+
+  <text y="476" class="mono" font-size="12.5">
+    <tspan x="740" fill="#78788c">.../PyProject/myproject</tspan>
+  </text>
+
+  <!-- ═══ Row 3: Claude Code native status ═══ -->
+  <rect y="490" width="920" height="30" fill="#0d1117"/>
   <rect y="510" width="920" height="10" rx="10" fill="#0d1117"/>
-
-  <text y="513" class="mono" font-size="11">
-    <tspan x="16" fill="#484f58">❯</tspan>
-    <tspan fill="#7d8590"> context left until 5-hour limit</tspan>
-    <tspan x="820" fill="#484f58">22% left</tspan>
+  <text y="508" class="mono" font-size="11">
+    <tspan x="20" fill="#484f58">⏸</tspan>
+    <tspan fill="#7d8590"> plan mode on (shift+tab to cycle)</tspan>
   </text>
 </svg>
