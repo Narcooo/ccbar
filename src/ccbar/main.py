@@ -26,8 +26,12 @@ LOCAL_TZ = datetime.now().astimezone().tzinfo
 # ── Cache paths: cross-platform temp dir ──
 _TMPDIR = tempfile.gettempdir()
 QUOTA_CACHE = os.path.join(_TMPDIR, "ccbar-quota.json")
+QUOTA_ERR = os.path.join(_TMPDIR, "ccbar-quota.err")
+QUOTA_PID = os.path.join(_TMPDIR, "ccbar-quota.pid")
 TOKEN_CACHE = os.path.join(_TMPDIR, "ccbar-tokens.json")
-QUOTA_TTL = 30   # API refresh interval (seconds)
+QUOTA_POLL = 30   # daemon poll interval (seconds)
+QUOTA_ERR_BACKOFF = 180  # backoff after API error (seconds)
+QUOTA_IDLE_EXIT = 300  # daemon exits after no reader for N seconds
 TOKEN_TTL = 60   # JSONL scan interval (seconds)
 
 HOME = os.path.expanduser("~")
@@ -52,7 +56,7 @@ PRICING_TABLE = {
 }
 DFLT_PRICING = {"in": 3, "out": 15, "cc": 3.75, "cr": 0.3}
 
-# ── OAuth API config ──
+# ── API config ──
 API_CONFIG = {
     "endpoint": "https://api.anthropic.com/api/oauth/usage",
     "beta_header": "oauth-2025-04-20",
@@ -319,21 +323,141 @@ def load_config():
 #  OAuth API — real quota
 # ═══════════════════════════════════════
 
-def get_oauth_token():
-    """Get OAuth token: env var → macOS keychain → None."""
-    token = os.environ.get("CLAUDE_OAUTH_TOKEN", "").strip()
-    if token:
-        return token
+OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+OAUTH_REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
+OWN_TOKEN_CACHE = os.path.join(_TMPDIR, "ccbar-oauth.json")
 
+
+def _read_cc_keychain_raw():
+    """Read the full Claude Code credentials JSON blob from macOS keychain.
+
+    Returns (full_dict, oauth_dict) where full_dict is the entire keychain
+    entry and oauth_dict is the claudeAiOauth sub-object.
+    """
     try:
         raw = subprocess.check_output(
             ["security", "find-generic-password",
              "-s", "Claude Code-credentials", "-w"],
             stderr=subprocess.DEVNULL, text=True).strip()
-        return json.loads(raw).get("claudeAiOauth", {}).get("accessToken", "")
+        full = json.loads(raw)
+        return full, full.get("claudeAiOauth", {})
     except (FileNotFoundError, subprocess.CalledProcessError,
             json.JSONDecodeError, KeyError):
-        return ""
+        return {}, {}
+
+
+def _read_cc_credentials():
+    """Read Claude Code OAuth credentials from macOS keychain."""
+    _, oauth = _read_cc_keychain_raw()
+    return oauth
+
+
+def _write_cc_keychain(full_blob):
+    """Write updated credentials back to macOS keychain.
+
+    Anthropic's OAuth server rotates refresh tokens on every refresh.
+    We must write the new refresh_token back so CC can still use it.
+    """
+    account = os.environ.get("USER") or os.getlogin()
+    blob_json = json.dumps(full_blob, separators=(",", ":"))
+    subprocess.run(
+        ["security", "add-generic-password", "-U",
+         "-s", "Claude Code-credentials",
+         "-a", account,
+         "-w", blob_json],
+        check=True, stderr=subprocess.DEVNULL,
+    )
+
+
+def _refresh_own_token():
+    """Refresh to get our own access token (separate rate-limit bucket).
+
+    Uses CC's refresh_token + the public OAuth client ID to obtain an
+    independent access token. This avoids competing with CC for API
+    rate limits on /api/oauth/usage.
+
+    IMPORTANT: Anthropic rotates refresh tokens on every refresh call.
+    The old refresh_token becomes invalid. We write the new one back
+    to the keychain so CC's token chain isn't broken.
+    """
+    full_blob, oauth = _read_cc_keychain_raw()
+    refresh_token = oauth.get("refreshToken", "")
+    if not refresh_token:
+        return None
+
+    import urllib.request
+    import urllib.parse
+    import urllib.error
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": OAUTH_CLIENT_ID,
+    }).encode()
+    req = urllib.request.Request(
+        OAUTH_REFRESH_URL,
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "ccbar",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            # Stale refresh token — write diagnostic to error cache
+            try:
+                with open(QUOTA_ERR, "w") as f:
+                    f.write("invalid_grant: run 'ccbar --fix-auth'")
+            except OSError:
+                pass
+        raise
+
+    # Write new refresh_token back to keychain (rotation)
+    new_rt = data.get("refresh_token")
+    if new_rt and new_rt != refresh_token:
+        updated_oauth = {**oauth, "refreshToken": new_rt}
+        if "accessToken" in data:
+            updated_oauth["accessToken"] = data["accessToken"]
+        updated_blob = {**full_blob, "claudeAiOauth": updated_oauth}
+        try:
+            _write_cc_keychain(updated_blob)
+        except (subprocess.CalledProcessError, OSError):
+            pass
+
+    token_data = {
+        "access_token": data["access_token"],
+        "expires_at": time.time() + data.get("expires_in", 28800),
+    }
+    try:
+        with open(OWN_TOKEN_CACHE, "w") as f:
+            json.dump(token_data, f)
+    except OSError:
+        pass
+    return token_data["access_token"]
+
+
+def get_oauth_token():
+    """Get our own OAuth token (refreshed), falling back to CC's token."""
+    token = os.environ.get("CLAUDE_OAUTH_TOKEN", "").strip()
+    if token:
+        return token
+
+    # Try our own cached token first
+    cached = _read_cache(OWN_TOKEN_CACHE)
+    if cached and cached.get("expires_at", 0) > time.time() + 60:
+        return cached["access_token"]
+
+    # Refresh to get our own token
+    try:
+        return _refresh_own_token()
+    except Exception:
+        pass
+
+    # Fallback: CC's token (will likely 429 but better than nothing)
+    return _read_cc_credentials().get("accessToken", "")
 
 
 def _read_cache(path):
@@ -347,19 +471,89 @@ def _read_cache(path):
     return None
 
 
-def fetch_quota():
-    """Fetch OAuth quota with TTL cache + stale fallback on error."""
-    cached = _read_cache(QUOTA_CACHE)
-    if cached is not None:
+# ── Quota daemon: independent background process ──
+
+def _daemon_alive():
+    """Check if quota daemon is running."""
+    try:
+        if os.path.exists(QUOTA_PID):
+            with open(QUOTA_PID) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)  # signal 0 = check if alive
+            return True
+    except (OSError, ValueError):
+        pass
+    return False
+
+
+def _ensure_daemon():
+    """Spawn quota daemon if not already running."""
+    if _daemon_alive():
+        return
+    env = dict(os.environ)
+    env.pop("CLAUDECODE", None)  # avoid nested-session check
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "ccbar.main", "--daemon"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            env=env,
+        )
+    except OSError:
+        pass
+
+
+def _quota_daemon_loop():
+    """Background daemon: poll OAuth API independently of CC."""
+    import signal
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+    # Write PID file
+    try:
+        with open(QUOTA_PID, "w") as f:
+            f.write(str(os.getpid()))
+    except OSError:
+        sys.exit(1)
+
+    try:
+        while True:
+            _quota_poll_once()
+
+            # Auto-exit if nobody reads the cache (ccbar not active)
+            try:
+                age = time.time() - os.path.getatime(QUOTA_CACHE)
+                if age > QUOTA_IDLE_EXIT:
+                    break
+            except OSError:
+                pass
+
+            time.sleep(QUOTA_POLL)
+    finally:
         try:
-            if time.time() - os.path.getmtime(QUOTA_CACHE) < QUOTA_TTL:
-                return cached
+            os.unlink(QUOTA_PID)
         except OSError:
             pass
 
+
+def _quota_poll_once():
+    """Poll quota via /api/oauth/usage with our own refreshed token.
+
+    We use a self-refreshed access token (separate from CC's) so we have
+    our own rate-limit bucket and don't compete with Claude Code.
+    """
+    # Check error backoff
+    try:
+        if os.path.exists(QUOTA_ERR):
+            if time.time() - os.path.getmtime(QUOTA_ERR) < QUOTA_ERR_BACKOFF:
+                return
+    except OSError:
+        pass
+
     token = get_oauth_token()
     if not token:
-        return cached  # stale > nothing
+        return
 
     try:
         import urllib.request
@@ -373,14 +567,30 @@ def fetch_quota():
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
     except Exception:
-        return cached  # stale > nothing
+        try:
+            with open(QUOTA_ERR, "w") as f:
+                f.write("")
+        except OSError:
+            pass
+        return
 
+    # Success — write cache, clear error
     try:
         with open(QUOTA_CACHE, "w") as f:
             json.dump(data, f)
     except OSError:
         pass
-    return data
+    try:
+        if os.path.exists(QUOTA_ERR):
+            os.unlink(QUOTA_ERR)
+    except OSError:
+        pass
+
+
+def fetch_quota():
+    """Read quota from cache. Daemon handles API polling independently."""
+    _ensure_daemon()
+    return _read_cache(QUOTA_CACHE)
 
 
 # ═══════════════════════════════════════
@@ -952,7 +1162,17 @@ def uninstall():
         except (OSError, json.JSONDecodeError) as e:
             print(f"  Error updating settings: {e}")
 
-    for cache in (QUOTA_CACHE, TOKEN_CACHE):
+    # Stop daemon
+    try:
+        if os.path.exists(QUOTA_PID):
+            with open(QUOTA_PID) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 15)  # SIGTERM
+            print("✓ Stopped quota daemon")
+    except (OSError, ValueError):
+        pass
+
+    for cache in (QUOTA_CACHE, QUOTA_ERR, QUOTA_PID, OWN_TOKEN_CACHE, TOKEN_CACHE):
         try:
             os.remove(cache)
         except FileNotFoundError:
@@ -987,11 +1207,81 @@ def init_config():
     print("  API: endpoint + beta header for OAuth quota")
 
 
+def fix_auth():
+    """Fix stale OAuth refresh token by re-logging into Claude Code."""
+    # Stop daemon first
+    try:
+        if os.path.exists(QUOTA_PID):
+            with open(QUOTA_PID) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 15)
+    except (OSError, ValueError):
+        pass
+
+    # Clean token caches
+    for cache in (OWN_TOKEN_CACHE, QUOTA_ERR):
+        try:
+            os.remove(cache)
+        except FileNotFoundError:
+            pass
+
+    # Test current refresh token
+    _, oauth = _read_cc_keychain_raw()
+    rt = oauth.get("refreshToken", "")
+    if not rt:
+        print("No refresh token found in keychain.")
+        print("Run: claude auth login")
+        return
+
+    import urllib.request
+    import urllib.parse
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": rt,
+        "client_id": OAUTH_CLIENT_ID,
+    }).encode()
+    req = urllib.request.Request(
+        OAUTH_REFRESH_URL, data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "ccbar",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        print("✓ Refresh token is valid. No fix needed.")
+        # Write back rotated token
+        new_rt = data.get("refresh_token")
+        if new_rt:
+            full_blob, _ = _read_cc_keychain_raw()
+            updated_oauth = {**oauth, "refreshToken": new_rt}
+            if "access_token" in data:
+                updated_oauth["accessToken"] = data["access_token"]
+            updated_blob = {**full_blob, "claudeAiOauth": updated_oauth}
+            _write_cc_keychain(updated_blob)
+            print("✓ Token rotated and keychain updated.")
+        return
+    except Exception:
+        pass
+
+    print("✗ Refresh token is stale (invalid_grant).")
+    print()
+    print("Fix: re-login to Claude Code to get fresh tokens:")
+    print("  claude auth logout && claude auth login")
+    print()
+    print("After re-login, ccbar will automatically use the new tokens.")
+
+
 # ═══════════════════════════════════════
 #  CLI entry point
 # ═══════════════════════════════════════
 
 def cli():
+    if "--daemon" in sys.argv:
+        _quota_daemon_loop()
+        return
     if "--install" in sys.argv:
         install()
     elif "--uninstall" in sys.argv:
@@ -1000,6 +1290,8 @@ def cli():
         init_config()
     elif "--version" in sys.argv:
         print(f"ccbar {__version__}")
+    elif "--fix-auth" in sys.argv:
+        fix_auth()
     elif "--help" in sys.argv or "-h" in sys.argv:
         print(f"ccbar {__version__} — Accurate cost tracking for Claude Code")
         print()
@@ -1008,6 +1300,7 @@ def cli():
         print("  ccbar --install      Register ccbar as Claude Code statusline command")
         print("  ccbar --uninstall    Remove ccbar and clean up caches")
         print("  ccbar --init-config  Create default config at ~/.config/ccbar.json")
+        print("  ccbar --fix-auth     Fix stale OAuth tokens (re-login to Claude Code)")
         print("  ccbar --version      Print version")
         print()
         print("Layout items: 5h, 7d, model, today, history, session, total")

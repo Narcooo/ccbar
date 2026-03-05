@@ -48,8 +48,8 @@ Restart Claude Code. Two status lines appear at the bottom. That's it.
 ## What you get
 
 ```
-Row 1:  5h quota bar + countdown · today tokens + ♻cache + cost › per-project · week · month
-Row 2:  7d quota bar + countdown · session cost + $/h + →projection + duration + lines · context% + model · total cost
+Row 1:  5h quota bar + countdown · today tokens + cost › proj tokens ♻cache/hit% cost · week cost › proj tokens cost │ month tokens cost › proj cost
+Row 2:  7d quota bar + countdown · session cost + $/h + →projection + duration + ctx% + lines · total cost › proj tokens ♻cache cost + path
 ```
 
 Terminal too narrow? Trailing columns drop automatically. Content within columns is never truncated.
