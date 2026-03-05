@@ -17,21 +17,24 @@
     </linearGradient>
   </defs>
 
-  <!-- Icon background -->
-  <rect width="120" height="120" x="10" y="10" rx="26" fill="url(#bg)"/>
-  <rect width="120" height="120" x="10" y="10" rx="26" stroke="#30363d" stroke-width="1.5" fill="none"/>
+  <!-- Center group: icon(120) + gap(16) + text(~220) ≈ 356, offset=(560-356)/2=102 -->
+  <g transform="translate(102, 0)">
+    <!-- Icon background -->
+    <rect width="120" height="120" x="0" y="10" rx="26" fill="url(#bg)"/>
+    <rect width="120" height="120" x="0" y="10" rx="26" stroke="#30363d" stroke-width="1.5" fill="none"/>
 
-  <!-- Top bar -->
-  <rect x="28" y="34" width="84" height="8" rx="4" fill="#21262d"/>
-  <rect x="28" y="34" width="72" height="8" rx="4" fill="url(#b1)"/>
+    <!-- Dollar sign in icon (upper area) -->
+    <text x="60" y="68" text-anchor="middle" fill="#ffd23c" font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="36" font-weight="bold">$</text>
 
-  <!-- Bottom bar -->
-  <rect x="28" y="52" width="84" height="8" rx="4" fill="#21262d"/>
-  <rect x="28" y="52" width="28" height="8" rx="4" fill="url(#b2)"/>
+    <!-- Top bar (below dollar, same zone) -->
+    <rect x="18" y="82" width="84" height="8" rx="4" fill="#21262d"/>
+    <rect x="18" y="82" width="72" height="8" rx="4" fill="url(#b1)"/>
 
-  <!-- Dollar sign in icon -->
-  <text x="70" y="102" text-anchor="middle" fill="#ffd23c" font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="32" font-weight="bold">$</text>
+    <!-- Bottom bar -->
+    <rect x="18" y="98" width="84" height="8" rx="4" fill="#21262d"/>
+    <rect x="18" y="98" width="28" height="8" rx="4" fill="url(#b2)"/>
 
-  <!-- "ccbar" text -->
-  <text x="156" y="92" fill="#c9d1d9" font-family="'SF Mono','Fira Code','Cascadia Code','Menlo','Consolas',monospace" font-size="72" font-weight="bold" letter-spacing="-1">ccbar</text>
+    <!-- "ccbar" text -->
+    <text x="136" y="92" fill="#c9d1d9" font-family="'SF Mono','Fira Code','Cascadia Code','Menlo','Consolas',monospace" font-size="72" font-weight="bold" letter-spacing="-1">ccbar</text>
+  </g>
 </svg>
