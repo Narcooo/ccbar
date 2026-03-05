@@ -2,15 +2,17 @@
 
 <br>
 
-<img src="assets/icon.svg" alt="ccbar" width="200">
+<img src="assets/logo.svg" alt="ccbar" width="400">
 
-# ccbar
+<br>
+<br>
 
-**Vibe coding 不再是闹着玩的。你得知道它花了多少。**
+**从 vibe coding 到成本可控的工程实践。**
 
-单文件 · 零依赖 · 纯 Python 标准库
+零依赖 · 纯 Python 标准库 · 一行 `pip install` 搞定
 
 [![PyPI](https://img.shields.io/pypi/v/ccbar?style=flat-square&color=blue)](https://pypi.org/project/ccbar/)
+[![Downloads](https://img.shields.io/pypi/dm/ccbar?style=flat-square&color=green)](https://pypi.org/project/ccbar/)
 [![Python](https://img.shields.io/pypi/pyversions/ccbar?style=flat-square)](https://pypi.org/project/ccbar/)
 [![License](https://img.shields.io/github/license/Narcooo/ccbar?style=flat-square)](LICENSE)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square)
@@ -18,13 +20,21 @@
 [![English](https://img.shields.io/badge/lang-English-grey?style=flat-square)](README.md)
 [![中文](https://img.shields.io/badge/lang-中文-blue?style=flat-square)](#)
 
-<br>
-
-<img src="assets/demo.svg" alt="ccbar 演示" width="880">
-
 </div>
 
 <br>
+
+<div align="center">
+<img src="assets/demo.svg" alt="ccbar 演示" width="920">
+</div>
+
+<br>
+
+## 为什么用 ccbar
+
+你每天在烧 API 额度或者 $200/月的 Max 订阅——但 Claude Code 不告诉你烧了多快、哪个项目烧的、到今天结束会花多少。ccbar 填上这个空缺。
+
+它**同时支持两种计费模式**：无论你是 API 按量付费还是 Pro/Max 订阅按配额使用，ccbar 都能实时追踪你的花费。不用猜，月底不再有惊吓。
 
 ## 安装
 
@@ -33,35 +43,61 @@ pip install ccbar
 ccbar --install
 ```
 
-重启 Claude Code，底部出现两行。搞定。
+重启 Claude Code，底部出现两行状态栏。搞定。
 
 ## 你看到什么
 
-| 行 | 内容 |
-|----|------|
-| **1** | `5h` 配额条 + 倒计时 · `today` token + ♻缓存 + 费用 › 项目细分 · `week` 总计 · `month` 总计 |
-| **2** | `7d` 配额条 + 倒计时 · `session` 费用 + 燃烧率 + 预测 + 时长 + 代码行 · `context`% + 模型 + 时钟 · `total` 项目总成本 + 路径 |
+```
+第1行:  5h 配额条 + 倒计时 · 今日 token + ♻缓存 + 费用 › 项目细分 · 本周 · 本月
+第2行:  7d 配额条 + 倒计时 · 会话费用 + $/h + →预测 + 时长 + 代码行 · context% + 模型 · 项目总成本
+```
 
-终端太窄？尾部列自动裁掉，列内内容永不修改。
+终端太窄？尾部列自动裁掉，列内内容永不截断。
 
-## 为什么数字是准的
+## 极致轻量
 
-- **按模型定价** — Opus 输出 $75/百万，Haiku 只要 $4/百万。ccbar 逐条读取模型 ID，不搞统一费率。
+ccbar 是一个 Python 文件。没有框架，没有后台守护进程，没有 node_modules。它读取 Claude Code 已有的 JSONL 日志和你已有的 OAuth API。整个包安装不到一秒。
+
+| | ccbar | 同类工具 |
+|---|---|---|
+| 依赖 | **0** | 10–50+ npm/pip 包 |
+| 安装时间 | **< 1s** | 30s – 2min |
+| 后台进程 | **无** — 每次刷新时运行 | 持久守护进程 |
+| 配置 | 1 个 JSON 文件或 1 个环境变量 | YAML + env + 后台设置 |
+
+## 精确到分
+
+大多数工具用统一费率估算成本。这是错的——Opus 输出比 Haiku 贵 **19 倍**。ccbar 做对了：
+
+- **按模型定价** — 逐条读取模型 ID。Opus、Sonnet、Haiku 各自正确计价。
 - **流式去重** — 每次 API 调用写入 2–7 条 JSONL。ccbar 按 `message.id` 去重，每条消息只算一次。
 - **缓存区分** — 缓存读取只有新输入 10% 的价格。ccbar 分别追踪，按项目显示 ♻命中率。
-- **跨会话累计** — 会话费用重启归零，你的账单没有。ccbar 扫描全部 JSONL——日、周、月、按项目。
+- **跨会话累计** — 会话费用重启归零，你的账单不会。ccbar 扫描全部 JSONL——日、周、月、按项目。
 
-## 还有什么
+## 全方位监控
 
-- **燃烧率** — `$8.50/h` 告诉你这个会话的烧钱速度。`→$18` 预测到配额重置时的总费用。
-- **配额条** — 绿→黄→红 HSL 渐变。5 小时和 7 天配额一眼看清。
-- **项目细分** — `› proj ♻56M/97% $124` — 哪个项目在吃你的预算。
-- **自适应布局** — 默认 2 行 × 4 列。终端变窄时裁列，内容永不截断。
+| 指标 | 它告诉你什么 |
+|------|-------------|
+| **5h / 7d 配额条** | 绿→黄→红渐变。在撞限额之前就知道要撞了。 |
+| **燃烧率** `$8.50/h` | 这个会话花钱的速度。 |
+| **预测** `→$18` | 按当前速度，到配额重置时会花多少。 |
+| **项目细分** `› proj ♻56M/97% $124` | 哪个项目在吃预算。缓存命中率附赠。 |
+| **代码行变化** `+250/-40` | 本会话的代码产出——花的钱值不值？ |
+| **Context %** | 上下文窗口用了多满。帮你决定何时 compact。 |
+| **今日 / 本周 / 本月** | 滚动累计，随时知道账单到哪了。 |
+
+## API 和订阅——全都追踪
+
+**API 用户** — ccbar 从逐模型 token 定价精确计算费用。你能看到每会话、每项目、每天的美元花费。
+
+**Pro / Max 订阅用户** — ccbar 通过 Anthropic OAuth API 读取你的配额。5 小时和 7 天进度条精确显示剩余额度，附带重置倒计时。
+
+不管哪种，一条状态栏讲完整个故事。
 
 ## 配置
 
 ```bash
-export CCBAR_LAYOUT="5h,today,week,month|7d,session,model,total"
+export CCBAR_LAYOUT="5h,today,history|7d,session,total"
 # 或
 ccbar --init-config   # → ~/.config/ccbar.json
 ```
@@ -71,7 +107,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 
 ```json
 {
-  "rows": [["5h", "today", "week", "month"], ["7d", "session", "model", "total"]],
+  "rows": [["5h", "today", "history"], ["7d", "session", "total"]],
   "columns": null,
   "colors": {},
   "pricing": {
@@ -84,7 +120,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 
 | 字段 | 说明 |
 |------|------|
-| `rows` | 布局网格——可用项: `5h` `7d` `today` `week` `month` `session` `model` `total` |
+| `rows` | 布局网格——可用项: `5h` `7d` `today` `history` `session` `model` `total` |
 | `columns` | 覆盖终端宽度（`null` = 自动检测） |
 | `pricing` | 每百万 token 价格 |
 | `colors` | `[R, G, B]` 颜色覆盖 |

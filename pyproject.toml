@@ -21,9 +21,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/majunxian/ccbar"
-Repository = "https://github.com/majunxian/ccbar"
-Issues = "https://github.com/majunxian/ccbar/issues"
+Homepage = "https://github.com/Narcooo/ccbar"
+Repository = "https://github.com/Narcooo/ccbar"
+Issues = "https://github.com/Narcooo/ccbar/issues"
 
 [project.scripts]
 ccbar = "ccbar.main:cli"
