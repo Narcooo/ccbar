@@ -1,6 +1,6 @@
 [project]
 name = "ccbar"
-version = "0.1.2"
+version = "0.1.3"
 description = "Accurate cost tracking and quota monitoring for Claude Code"
 readme = "README.md"
 license = "MIT"
