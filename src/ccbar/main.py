@@ -29,7 +29,7 @@ QUOTA_CACHE = os.path.join(_TMPDIR, "ccbar-quota.json")
 QUOTA_ERR = os.path.join(_TMPDIR, "ccbar-quota.err")
 QUOTA_PID = os.path.join(_TMPDIR, "ccbar-quota.pid")
 TOKEN_CACHE = os.path.join(_TMPDIR, "ccbar-tokens.json")
-QUOTA_POLL = 30   # daemon poll interval (seconds)
+QUOTA_POLL = 60   # daemon poll interval (seconds)
 QUOTA_ERR_BACKOFF = 180  # backoff after API error (seconds)
 QUOTA_IDLE_EXIT = 300  # daemon exits after no reader for N seconds
 TOKEN_TTL = 60   # JSONL scan interval (seconds)
@@ -48,13 +48,13 @@ DEFAULT_LAYOUT = [
 # ── Per-model pricing (USD per million tokens) ──
 # Overridable in ~/.config/ccbar.json under "pricing"
 PRICING_TABLE = {
-    "claude-opus-4-6":   {"in": 15, "out": 75, "cc": 18.75, "cr": 1.5},
-    "claude-opus-4-5":   {"in": 15, "out": 75, "cc": 18.75, "cr": 1.5},
-    "claude-sonnet-4-5": {"in": 3,  "out": 15, "cc": 3.75,  "cr": 0.3},
-    "claude-sonnet-4-6": {"in": 3,  "out": 15, "cc": 3.75,  "cr": 0.3},
-    "claude-haiku-4-5":  {"in": .8, "out": 4,  "cc": 1,     "cr": .08},
+    "claude-opus-4-6":   {"in": 15, "out": 75, "cc5": 18.75, "cc1h": 30, "cr": 1.5},
+    "claude-opus-4-5":   {"in": 15, "out": 75, "cc5": 18.75, "cc1h": 30, "cr": 1.5},
+    "claude-sonnet-4-5": {"in": 3,  "out": 15, "cc5": 3.75,  "cc1h": 6,  "cr": 0.3},
+    "claude-sonnet-4-6": {"in": 3,  "out": 15, "cc5": 3.75,  "cc1h": 6,  "cr": 0.3},
+    "claude-haiku-4-5":  {"in": .8, "out": 4,  "cc5": 1,     "cc1h": 1.6, "cr": .08},
 }
-DFLT_PRICING = {"in": 3, "out": 15, "cc": 3.75, "cr": 0.3}
+DFLT_PRICING = {"in": 3, "out": 15, "cc5": 3.75, "cc1h": 6, "cr": 0.3}
 
 # ── API config ──
 API_CONFIG = {
@@ -64,10 +64,18 @@ API_CONFIG = {
 
 def _per_token(table):
     """Convert $/million table to $/token for calculation."""
-    return {k: {t: v / 1e6 for t, v in rates.items()} for k, rates in table.items()}
+    per_token = {}
+    for model, rates in table.items():
+        norm = dict(rates)
+        if "cc5" not in norm and "cc" in norm:
+            norm["cc5"] = norm["cc"]
+        if "cc1h" not in norm and "cc5" in norm:
+            norm["cc1h"] = norm["cc5"] * 1.6
+        per_token[model] = {t: v / 1e6 for t, v in norm.items()}
+    return per_token
 
 PRICING = _per_token(PRICING_TABLE)
-DFLT = {t: v / 1e6 for t, v in DFLT_PRICING.items()}
+DFLT = _per_token({"default": DFLT_PRICING})["default"]
 
 # ── True-color palette ──
 # Edit these or override in ~/.config/ccbar.json {"colors": {"cost": [255,0,0]}}
@@ -299,7 +307,7 @@ def load_config():
                     PRICING_TABLE[model] = rates
                 PRICING = _per_token(PRICING_TABLE)
                 if "default" in file_cfg["pricing"]:
-                    DFLT = {t: v / 1e6 for t, v in file_cfg["pricing"]["default"].items()}
+                    DFLT = _per_token({"default": file_cfg["pricing"]["default"]})["default"]
             # Merge API config
             if "api" in file_cfg:
                 API_CONFIG.update(file_cfg["api"])
@@ -323,140 +331,63 @@ def load_config():
 #  OAuth API — real quota
 # ═══════════════════════════════════════
 
-OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-OAUTH_REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
-OWN_TOKEN_CACHE = os.path.join(_TMPDIR, "ccbar-oauth.json")
-
-
-def _read_cc_keychain_raw():
-    """Read the full Claude Code credentials JSON blob from macOS keychain.
-
-    Returns (full_dict, oauth_dict) where full_dict is the entire keychain
-    entry and oauth_dict is the claudeAiOauth sub-object.
-    """
+def _read_cc_credentials():
+    """Read Claude Code OAuth credentials from macOS keychain."""
     try:
         raw = subprocess.check_output(
             ["security", "find-generic-password",
              "-s", "Claude Code-credentials", "-w"],
             stderr=subprocess.DEVNULL, text=True).strip()
-        full = json.loads(raw)
-        return full, full.get("claudeAiOauth", {})
+        return json.loads(raw).get("claudeAiOauth", {})
     except (FileNotFoundError, subprocess.CalledProcessError,
             json.JSONDecodeError, KeyError):
-        return {}, {}
+        return {}
 
 
-def _read_cc_credentials():
-    """Read Claude Code OAuth credentials from macOS keychain."""
-    _, oauth = _read_cc_keychain_raw()
-    return oauth
+def _is_claude_ai_mode():
+    """Check if Claude Code is using claude.ai auth (not API key).
 
-
-def _write_cc_keychain(full_blob):
-    """Write updated credentials back to macOS keychain.
-
-    Anthropic's OAuth server rotates refresh tokens on every refresh.
-    We must write the new refresh_token back so CC can still use it.
+    Only claude.ai mode has subscription quotas (5h/7d).
+    API key mode has no such quotas — skip polling entirely.
     """
-    account = os.environ.get("USER") or os.getlogin()
-    blob_json = json.dumps(full_blob, separators=(",", ":"))
-    subprocess.run(
-        ["security", "add-generic-password", "-U",
-         "-s", "Claude Code-credentials",
-         "-a", account,
-         "-w", blob_json],
-        check=True, stderr=subprocess.DEVNULL,
-    )
-
-
-def _refresh_own_token():
-    """Refresh to get our own access token (separate rate-limit bucket).
-
-    Uses CC's refresh_token + the public OAuth client ID to obtain an
-    independent access token. This avoids competing with CC for API
-    rate limits on /api/oauth/usage.
-
-    IMPORTANT: Anthropic rotates refresh tokens on every refresh call.
-    The old refresh_token becomes invalid. We write the new one back
-    to the keychain so CC's token chain isn't broken.
-    """
-    full_blob, oauth = _read_cc_keychain_raw()
-    refresh_token = oauth.get("refreshToken", "")
-    if not refresh_token:
-        return None
-
-    import urllib.request
-    import urllib.parse
-    import urllib.error
-    body = urllib.parse.urlencode({
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": OAUTH_CLIENT_ID,
-    }).encode()
-    req = urllib.request.Request(
-        OAUTH_REFRESH_URL,
-        data=body,
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "User-Agent": "ccbar",
-        },
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        if e.code == 400:
-            # Stale refresh token — write diagnostic to error cache
-            try:
-                with open(QUOTA_ERR, "w") as f:
-                    f.write("invalid_grant: run 'ccbar --fix-auth'")
-            except OSError:
-                pass
-        raise
+        out = subprocess.check_output(
+            ["claude", "auth", "status", "--json"],
+            stderr=subprocess.DEVNULL, text=True, timeout=5).strip()
+        status = json.loads(out)
+        return status.get("authMethod") == "claude.ai"
+    except (FileNotFoundError, subprocess.CalledProcessError,
+            subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+        return False
 
-    # Write new refresh_token back to keychain (rotation)
-    new_rt = data.get("refresh_token")
-    if new_rt and new_rt != refresh_token:
-        updated_oauth = {**oauth, "refreshToken": new_rt}
-        if "accessToken" in data:
-            updated_oauth["accessToken"] = data["accessToken"]
-        updated_blob = {**full_blob, "claudeAiOauth": updated_oauth}
-        try:
-            _write_cc_keychain(updated_blob)
-        except (subprocess.CalledProcessError, OSError):
-            pass
 
-    token_data = {
-        "access_token": data["access_token"],
-        "expires_at": time.time() + data.get("expires_in", 28800),
-    }
+AUTH_MODE_CACHE = os.path.join(_TMPDIR, "ccbar-authmode.json")
+AUTH_MODE_TTL = 300  # re-check auth mode every 5 minutes
+
+
+def _is_quota_enabled():
+    """Check cached auth mode. Re-checks every AUTH_MODE_TTL seconds."""
     try:
-        with open(OWN_TOKEN_CACHE, "w") as f:
-            json.dump(token_data, f)
-    except OSError:
-        pass
-    return token_data["access_token"]
-
-
-def get_oauth_token():
-    """Get our own OAuth token (refreshed), falling back to CC's token."""
-    token = os.environ.get("CLAUDE_OAUTH_TOKEN", "").strip()
-    if token:
-        return token
-
-    # Try our own cached token first
-    cached = _read_cache(OWN_TOKEN_CACHE)
-    if cached and cached.get("expires_at", 0) > time.time() + 60:
-        return cached["access_token"]
-
-    # Refresh to get our own token
-    try:
-        return _refresh_own_token()
+        cached = _read_cache(AUTH_MODE_CACHE)
+        if cached and time.time() - cached.get("ts", 0) < AUTH_MODE_TTL:
+            return cached.get("claude_ai", False)
     except Exception:
         pass
 
-    # Fallback: CC's token (will likely 429 but better than nothing)
+    is_ai = _is_claude_ai_mode()
+    try:
+        with open(AUTH_MODE_CACHE, "w") as f:
+            json.dump({"claude_ai": is_ai, "ts": time.time()}, f)
+    except OSError:
+        pass
+    return is_ai
+
+
+def get_oauth_token():
+    """Get OAuth access token. Read-only — never touches refresh_token."""
+    token = os.environ.get("CLAUDE_OAUTH_TOKEN", "").strip()
+    if token:
+        return token
     return _read_cc_credentials().get("accessToken", "")
 
 
@@ -519,7 +450,9 @@ def _quota_daemon_loop():
 
     try:
         while True:
-            _quota_poll_once()
+            # Only poll if claude.ai mode (has subscription quotas)
+            if _is_quota_enabled():
+                _quota_poll_once()
 
             # Auto-exit if nobody reads the cache (ccbar not active)
             try:
@@ -538,10 +471,13 @@ def _quota_daemon_loop():
 
 
 def _quota_poll_once():
-    """Poll quota via /api/oauth/usage with our own refreshed token.
+    """Poll quota via /api/oauth/usage using CC's access token.
 
-    We use a self-refreshed access token (separate from CC's) so we have
-    our own rate-limit bucket and don't compete with Claude Code.
+    Read-only: we never refresh tokens ourselves to avoid breaking CC's
+    auth chain (refresh_token rotation is single-use).
+
+    Handles 429 with retries — rate limit is per-token and Retry-After: 0,
+    so short random delays can catch gaps in CC's own API usage.
     """
     # Check error backoff
     try:
@@ -555,23 +491,44 @@ def _quota_poll_once():
     if not token:
         return
 
-    try:
-        import urllib.request
-        req = urllib.request.Request(
-            API_CONFIG["endpoint"],
-            headers={
-                "Authorization": f"Bearer {token}",
-                "anthropic-beta": API_CONFIG["beta_header"],
-            },
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-    except Exception:
+    import urllib.request
+    import urllib.error
+    import random
+
+    # Try up to 5 times with random delays to catch gaps in CC's polling
+    for attempt in range(5):
         try:
-            with open(QUOTA_ERR, "w") as f:
-                f.write("")
-        except OSError:
-            pass
+            req = urllib.request.Request(
+                API_CONFIG["endpoint"],
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "anthropic-beta": API_CONFIG["beta_header"],
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            break  # success
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 4:
+                time.sleep(random.uniform(1, 3))
+                continue
+            # Non-retryable or exhausted retries — not a hard error for 429
+            if e.code == 429:
+                return  # silent fail, try again next poll cycle
+            try:
+                with open(QUOTA_ERR, "w") as f:
+                    f.write(str(e.code))
+            except OSError:
+                pass
+            return
+        except Exception:
+            try:
+                with open(QUOTA_ERR, "w") as f:
+                    f.write("")
+            except OSError:
+                pass
+            return
+    else:
         return
 
     # Success — write cache, clear error
@@ -588,7 +545,9 @@ def _quota_poll_once():
 
 
 def fetch_quota():
-    """Read quota from cache. Daemon handles API polling independently."""
+    """Read quota from cache. Only polls when auth mode is claude.ai."""
+    if not _is_quota_enabled():
+        return None
     _ensure_daemon()
     return _read_cache(QUOTA_CACHE)
 
@@ -597,13 +556,37 @@ def fetch_quota():
 #  JSONL scan — token/cost stats
 # ═══════════════════════════════════════
 
+def _pricing_for_model(model):
+    """Resolve pricing for exact or version-suffixed model IDs."""
+    candidates = [model]
+    dotted = model.replace(".", "-")
+    if dotted != model:
+        candidates.append(dotted)
+
+    for cand in candidates:
+        if cand in PRICING:
+            return PRICING[cand]
+    for cand in candidates:
+        for known in PRICING:
+            if cand.startswith(f"{known}-"):
+                return PRICING[known]
+    return DFLT
+
+
 def est_cost(model, u):
     """Return (base_cost, cache_read_cost)."""
-    p = PRICING.get(model, DFLT)
+    p = _pricing_for_model(model)
+    cc = u.get("cache_creation") or {}
+    cc_total = u.get("cache_creation_input_tokens", 0) or 0
+    cc_5m = cc.get("ephemeral_5m_input_tokens", 0) or 0
+    cc_1h = cc.get("ephemeral_1h_input_tokens", 0) or 0
+    if cc_total and cc_5m + cc_1h == 0:
+        cc_5m = cc_total
     base = (
         (u.get("input_tokens", 0) or 0) * p["in"]
         + (u.get("output_tokens", 0) or 0) * p["out"]
-        + (u.get("cache_creation_input_tokens", 0) or 0) * p["cc"]
+        + cc_5m * p["cc5"]
+        + cc_1h * p["cc1h"]
     )
     cr = (u.get("cache_read_input_tokens", 0) or 0) * p["cr"]
     return base, cr
@@ -645,9 +628,8 @@ def scan_tokens():
         if not os.path.isdir(pp):
             continue
         p = dict(ZERO)
+        msgs = {}
         for fp in glob.glob(os.path.join(pp, "**", "*.jsonl"), recursive=True):
-
-            msgs = {}
             try:
                 with open(fp, "r", errors="ignore") as f:
                     for line in f:
@@ -665,52 +647,57 @@ def scan_tokens():
                             continue
                         if entry.get("type") == "progress":
                             continue
-                        msgs[msg_id] = (msg, usage, ts_str)
+                        prev = msgs.get(msg_id)
+                        cand = (msg, usage, ts_str)
+                        if prev is None or (ts_str, usage.get("output_tokens", 0) or 0) >= (
+                            prev[2], prev[1].get("output_tokens", 0) or 0
+                        ):
+                            msgs[msg_id] = cand
             except OSError:
                 continue
 
-            for msg, usage, ts_str in msgs.values():
-                try:
-                    ts = datetime.fromisoformat(
-                        ts_str.replace("Z", "+00:00")
-                    ).astimezone(LOCAL_TZ)
-                except (ValueError, TypeError):
-                    continue
-                tok = sum(usage.get(k, 0) or 0 for k in (
-                    "input_tokens", "output_tokens",
-                    "cache_creation_input_tokens"))
-                cr_tok = usage.get("cache_read_input_tokens", 0) or 0
-                in_tok = ((usage.get("input_tokens", 0) or 0)
-                          + (usage.get("cache_creation_input_tokens", 0) or 0))
-                base, cr = est_cost(msg.get("model", ""), usage)
-                # All-time totals (no date filter)
+        for msg, usage, ts_str in msgs.values():
+            try:
+                ts = datetime.fromisoformat(
+                    ts_str.replace("Z", "+00:00")
+                ).astimezone(LOCAL_TZ)
+            except (ValueError, TypeError):
+                continue
+            tok = sum(usage.get(k, 0) or 0 for k in (
+                "input_tokens", "output_tokens",
+                "cache_creation_input_tokens"))
+            cr_tok = usage.get("cache_read_input_tokens", 0) or 0
+            in_tok = ((usage.get("input_tokens", 0) or 0)
+                      + (usage.get("cache_creation_input_tokens", 0) or 0))
+            base, cr = est_cost(msg.get("model", ""), usage)
+            # All-time totals (no date filter)
+            for d in (st, p):
+                d["all_tok"] += tok
+                d["all_cost"] += base
+                d["all_ccost"] += cr
+                d["all_cr_tok"] += cr_tok
+                d["all_in_tok"] += in_tok
+            if ts >= cuts["month"]:
                 for d in (st, p):
-                    d["all_tok"] += tok
-                    d["all_cost"] += base
-                    d["all_ccost"] += cr
-                    d["all_cr_tok"] += cr_tok
-                    d["all_in_tok"] += in_tok
-                if ts >= cuts["month"]:
+                    d["month_tok"] += tok
+                    d["month_cost"] += base
+                    d["month_ccost"] += cr
+                if ts >= cuts["week"]:
                     for d in (st, p):
-                        d["month_tok"] += tok
-                        d["month_cost"] += base
-                        d["month_ccost"] += cr
-                    if ts >= cuts["week"]:
+                        d["week_tok"] += tok
+                        d["week_cost"] += base
+                        d["week_ccost"] += cr
+                        d["week_cr_tok"] += cr_tok
+                        d["week_in_tok"] += in_tok
+                    if ts >= cuts["today"]:
                         for d in (st, p):
-                            d["week_tok"] += tok
-                            d["week_cost"] += base
-                            d["week_ccost"] += cr
-                            d["week_cr_tok"] += cr_tok
-                            d["week_in_tok"] += in_tok
-                        if ts >= cuts["today"]:
-                            for d in (st, p):
-                                d["today_tok"] += tok
-                                d["today_cost"] += base
-                                d["today_ccost"] += cr
-                                d["today_cr_tok"] += cr_tok
-                                d["today_in_tok"] += in_tok
+                            d["today_tok"] += tok
+                            d["today_cost"] += base
+                            d["today_ccost"] += cr
+                            d["today_cr_tok"] += cr_tok
+                            d["today_in_tok"] += in_tok
 
-        if p["all_tok"] > 0:
+        if p["all_tok"] > 0 or p["all_cost"] > 0 or p["all_ccost"] > 0:
             st["projects"][proj] = p
 
     return st
@@ -994,6 +981,14 @@ def main():
     raw = sys.stdin.read()
     data = json.loads(raw)
 
+    # Debug: dump stdin to file for troubleshooting
+    if os.environ.get("CCBAR_DEBUG"):
+        try:
+            with open(os.path.join(_TMPDIR, "ccbar-stdin.json"), "w") as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass
+
     cfg = load_config()
     rows_cfg = cfg.get("rows", DEFAULT_LAYOUT)
 
@@ -1172,7 +1167,7 @@ def uninstall():
     except (OSError, ValueError):
         pass
 
-    for cache in (QUOTA_CACHE, QUOTA_ERR, QUOTA_PID, OWN_TOKEN_CACHE, TOKEN_CACHE):
+    for cache in (QUOTA_CACHE, QUOTA_ERR, QUOTA_PID, TOKEN_CACHE, AUTH_MODE_CACHE):
         try:
             os.remove(cache)
         except FileNotFoundError:
@@ -1208,70 +1203,54 @@ def init_config():
 
 
 def fix_auth():
-    """Fix stale OAuth refresh token by re-logging into Claude Code."""
-    # Stop daemon first
+    """Diagnose OAuth token status and clear error state."""
+    # Stop daemon
     try:
         if os.path.exists(QUOTA_PID):
             with open(QUOTA_PID) as f:
                 pid = int(f.read().strip())
             os.kill(pid, 15)
+            print("✓ Stopped quota daemon")
     except (OSError, ValueError):
         pass
 
-    # Clean token caches
-    for cache in (OWN_TOKEN_CACHE, QUOTA_ERR):
+    # Clear error/cache state
+    for f in (QUOTA_ERR, QUOTA_CACHE):
         try:
-            os.remove(cache)
+            os.remove(f)
         except FileNotFoundError:
             pass
+    print("✓ Cleared error state and cache")
 
-    # Test current refresh token
-    _, oauth = _read_cc_keychain_raw()
-    rt = oauth.get("refreshToken", "")
-    if not rt:
-        print("No refresh token found in keychain.")
-        print("Run: claude auth login")
+    # Test token
+    token = get_oauth_token()
+    if not token:
+        print("✗ No OAuth token found.")
+        print("  Set CLAUDE_OAUTH_TOKEN or log in: claude auth login")
         return
 
     import urllib.request
-    import urllib.parse
-    body = urllib.parse.urlencode({
-        "grant_type": "refresh_token",
-        "refresh_token": rt,
-        "client_id": OAUTH_CLIENT_ID,
-    }).encode()
+    import urllib.error
     req = urllib.request.Request(
-        OAUTH_REFRESH_URL, data=body,
+        API_CONFIG["endpoint"],
         headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "User-Agent": "ccbar",
+            "Authorization": f"Bearer {token}",
+            "anthropic-beta": API_CONFIG["beta_header"],
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-        print("✓ Refresh token is valid. No fix needed.")
-        # Write back rotated token
-        new_rt = data.get("refresh_token")
-        if new_rt:
-            full_blob, _ = _read_cc_keychain_raw()
-            updated_oauth = {**oauth, "refreshToken": new_rt}
-            if "access_token" in data:
-                updated_oauth["accessToken"] = data["access_token"]
-            updated_blob = {**full_blob, "claudeAiOauth": updated_oauth}
-            _write_cc_keychain(updated_blob)
-            print("✓ Token rotated and keychain updated.")
-        return
-    except Exception:
-        pass
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            print(f"✓ Usage API: OK")
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            print(f"  Usage API: 429 (rate limited by CC — will retry in background)")
+        else:
+            print(f"✗ Usage API: HTTP {e.code}")
+    except Exception as e:
+        print(f"✗ Usage API: {e}")
 
-    print("✗ Refresh token is stale (invalid_grant).")
     print()
-    print("Fix: re-login to Claude Code to get fresh tokens:")
-    print("  claude auth logout && claude auth login")
-    print()
-    print("After re-login, ccbar will automatically use the new tokens.")
+    print("Daemon will restart automatically on next ccbar invocation.")
 
 
 # ═══════════════════════════════════════
@@ -1300,7 +1279,7 @@ def cli():
         print("  ccbar --install      Register ccbar as Claude Code statusline command")
         print("  ccbar --uninstall    Remove ccbar and clean up caches")
         print("  ccbar --init-config  Create default config at ~/.config/ccbar.json")
-        print("  ccbar --fix-auth     Fix stale OAuth tokens (re-login to Claude Code)")
+        print("  ccbar --fix-auth     Diagnose OAuth token status and clear cache state")
         print("  ccbar --version      Print version")
         print()
         print("Layout items: 5h, 7d, model, today, history, session, total")
