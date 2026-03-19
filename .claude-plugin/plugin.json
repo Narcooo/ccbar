@@ -1,0 +1,17 @@
+{
+  "name": "ccbar",
+  "version": "0.2.0",
+  "description": "Cost and quota statusline plugin for Claude Code",
+  "author": {
+    "name": "majunxian"
+  },
+  "homepage": "https://github.com/Narcooo/ccbar",
+  "repository": "https://github.com/Narcooo/ccbar",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "statusline",
+    "cost-tracking",
+    "quota"
+  ]
+}

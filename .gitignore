@@ -7,3 +7,6 @@ build/
 *.egg
 .venv/
 .env
+node_modules/
+coverage/
+*.tsbuildinfo

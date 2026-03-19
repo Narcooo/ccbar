@@ -1,0 +1,13 @@
+{
+  "name": "ccbar-dev",
+  "owner": {
+    "name": "majunxian"
+  },
+  "plugins": [
+    {
+      "name": "ccbar",
+      "source": "./",
+      "description": "Cost and quota statusline plugin for Claude Code"
+    }
+  ]
+}
