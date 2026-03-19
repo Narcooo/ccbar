@@ -1,6 +1,7 @@
+import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { loadConfig } from "./config.js";
 import { doctorStatusline, repairStatusline, setupStatusline } from "./install.js";
@@ -25,6 +26,20 @@ function createProcessIo(): CliIo {
       process.stdout.write(value);
     },
   };
+}
+
+export function isDirectExecution(metaUrl: string, argvPath?: string): boolean {
+  if (!argvPath) {
+    return false;
+  }
+
+  try {
+    const metaPath = realpathSync.native(fileURLToPath(metaUrl));
+    const execPath = realpathSync.native(argvPath);
+    return metaPath === execPath;
+  } catch {
+    return false;
+  }
 }
 
 export async function main(
@@ -74,6 +89,6 @@ export async function main(
   io.writeStdout(output);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   void main();
 }
