@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'PLUGIN_DIR=$(find \"$HOME/.claude/plugins/cache/ccbar/ccbar\" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1); [ -n \"$PLUGIN_DIR\" ] || exit 0; exec node \"$PLUGIN_DIR/dist/cli.js\" repair'"
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'PLUGIN_DIR=$(find \"$HOME/.claude/plugins/cache/ccbar/ccbar\" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1); [ -n \"$PLUGIN_DIR\" ] || exit 0; exec node \"$PLUGIN_DIR/dist/cli.js\" repair'"
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'PLUGIN_DIR=$(find \"$HOME/.claude/plugins/cache/ccbar/ccbar\" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1); [ -n \"$PLUGIN_DIR\" ] || exit 0; exec node \"$PLUGIN_DIR/dist/cli.js\" repair'"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'PLUGIN_DIR=$(find \"$HOME/.claude/plugins/cache/ccbar/ccbar\" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1); [ -n \"$PLUGIN_DIR\" ] || exit 0; exec node \"$PLUGIN_DIR/dist/cli.js\" repair'"
+          }
+        ]
+      }
+    ]
+  }
+}
