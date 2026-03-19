@@ -39,11 +39,11 @@ It works with **both billing models**: whether you're on the API (pay-per-token)
 ## Install
 
 ```bash
-pip install ccbar
-ccbar --install
+/plugin install ccbar
+/ccbar:setup
 ```
 
-Restart Claude Code. Two status lines appear at the bottom. That's it.
+`ccbar` now installs as a native Claude Code plugin. `setup` wires the plugin into `statusLine.command`, and the bundled `SessionStart` hook repairs the wiring if it drifts later.
 
 ## What you get
 
@@ -56,14 +56,14 @@ Terminal too narrow? Trailing columns drop automatically. Content within columns
 
 ## Lightweight by design
 
-ccbar is a single Python file. No frameworks, no background daemons, no node_modules. It reads JSONL logs that Claude Code already writes and the OAuth API you already have. The entire package installs in under a second.
+ccbar is now a native Claude Code plugin built on Node.js/TypeScript. There is no PyPI bootstrap layer, no extra daemon requirement for correctness, and no separate `ccbar --install` step. It reads the JSONL logs Claude Code already writes and renders directly through Claude's plugin-driven statusline flow.
 
 | | ccbar | typical alternatives |
 |---|---|---|
-| Dependencies | **0** | 10–50+ npm/pip packages |
-| Install time | **< 1s** | 30s – 2min |
-| Background process | **None** — runs on each statusline refresh | Persistent daemon |
-| Config | 1 JSON file or 1 env var | YAML + env + dashboard setup |
+| Runtime path | **Native Claude plugin** | external script + manual wiring |
+| Setup | **`/plugin install` + `/ccbar:setup`** | package install + shell glue |
+| Background process | **None required** | Persistent daemon |
+| Config | plugin config JSON + slash commands | YAML + env + dashboard setup |
 
 ## Accurate to the cent
 
@@ -97,9 +97,8 @@ Either way, you get a single statusline that tells the full story.
 ## Configure
 
 ```bash
-export CCBAR_LAYOUT="5h,today,history|7d,session,total"
-# or
-ccbar --init-config   # → ~/.config/ccbar.json
+/ccbar:configure
+/ccbar:doctor
 ```
 
 <details>
@@ -108,13 +107,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 ```json
 {
   "rows": [["5h", "today", "history"], ["7d", "session", "total"]],
-  "columns": null,
-  "colors": {},
-  "pricing": {
-    "claude-opus-4-6":    { "in": 15,  "out": 75, "cc": 18.75, "cr": 1.5  },
-    "claude-sonnet-4-6":  { "in": 3,   "out": 15, "cc": 3.75,  "cr": 0.3  },
-    "claude-haiku-4-5":   { "in": 0.8, "out": 4,  "cc": 1,     "cr": 0.08 }
-  }
+  "columns": null
 }
 ```
 
@@ -122,25 +115,28 @@ ccbar --init-config   # → ~/.config/ccbar.json
 |-------|-------------|
 | `rows` | Layout grid — items: `5h` `7d` `today` `history` `session` `model` `total` |
 | `columns` | Override terminal width (`null` = auto-detect) |
-| `pricing` | $/million tokens per model |
-| `colors` | `[R, G, B]` overrides |
 
 </details>
+
+The plugin stores config under `~/.claude/plugins/ccbar/config.json`.
 
 ## How it works
 
 ```
-stdin JSON → detect terminal width → fetch OAuth quota (cached 30s)
-           → scan ~/.claude/projects/**/*.jsonl (cached 60s)
-           → dedup by message.id → per-model pricing → adaptive layout → stdout
+stdin JSON → plugin runtime → scan ~/.claude/projects/**/*.jsonl
+           → dedup by message.id → per-model pricing
+           → adaptive layout → stdout
 ```
 
-OAuth — macOS: auto-reads Keychain. Linux/CI: `export CLAUDE_OAUTH_TOKEN="..."`. Without it, quota bars show `--`.
+Plugin commands:
+- `/ccbar:setup` wires `statusLine.command`
+- `/ccbar:configure` edits plugin config
+- `/ccbar:doctor` checks plugin cache and statusline wiring
 
 ## Uninstall
 
 ```bash
-ccbar --uninstall && pip uninstall ccbar
+/plugin remove ccbar
 ```
 
 ---

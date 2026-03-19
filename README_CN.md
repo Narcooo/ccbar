@@ -39,11 +39,11 @@ Claude Code 实时成本追踪与配额监控，零依赖。
 ## 安装
 
 ```bash
-pip install ccbar
-ccbar --install
+/plugin install ccbar
+/ccbar:setup
 ```
 
-重启 Claude Code，底部出现两行状态栏。搞定。
+`ccbar` 现在是原生 Claude Code 插件。`setup` 会把插件接到 `statusLine.command`，之后 `SessionStart` hook 会在配置漂移时自动修复。
 
 ## 你看到什么
 
@@ -56,14 +56,14 @@ ccbar --install
 
 ## 极致轻量
 
-ccbar 是一个 Python 文件。没有框架，没有后台守护进程，没有 node_modules。它读取 Claude Code 已有的 JSONL 日志和你已有的 OAuth API。整个包安装不到一秒。
+ccbar 现在是基于 Node.js/TypeScript 的原生 Claude Code 插件。不再依赖 PyPI 引导层，也不需要单独执行 `ccbar --install`。它直接读取 Claude Code 已有的 JSONL 日志，并通过插件链路输出到底部状态栏。
 
 | | ccbar | 同类工具 |
 |---|---|---|
-| 依赖 | **0** | 10–50+ npm/pip 包 |
-| 安装时间 | **< 1s** | 30s – 2min |
-| 后台进程 | **无** — 每次刷新时运行 | 持久守护进程 |
-| 配置 | 1 个 JSON 文件或 1 个环境变量 | YAML + env + 后台设置 |
+| 运行形态 | **原生 Claude 插件** | 外部脚本 + 手工接线 |
+| 安装方式 | **`/plugin install` + `/ccbar:setup`** | 包管理器安装 + shell 胶水 |
+| 后台进程 | **非必需** | 持久守护进程 |
+| 配置 | 插件 JSON 配置 + slash commands | YAML + env + 后台设置 |
 
 ## 精确到分
 
@@ -97,9 +97,8 @@ ccbar 是一个 Python 文件。没有框架，没有后台守护进程，没有
 ## 配置
 
 ```bash
-export CCBAR_LAYOUT="5h,today,history|7d,session,total"
-# 或
-ccbar --init-config   # → ~/.config/ccbar.json
+/ccbar:configure
+/ccbar:doctor
 ```
 
 <details>
@@ -108,13 +107,7 @@ ccbar --init-config   # → ~/.config/ccbar.json
 ```json
 {
   "rows": [["5h", "today", "history"], ["7d", "session", "total"]],
-  "columns": null,
-  "colors": {},
-  "pricing": {
-    "claude-opus-4-6":    { "in": 15,  "out": 75, "cc": 18.75, "cr": 1.5  },
-    "claude-sonnet-4-6":  { "in": 3,   "out": 15, "cc": 3.75,  "cr": 0.3  },
-    "claude-haiku-4-5":   { "in": 0.8, "out": 4,  "cc": 1,     "cr": 0.08 }
-  }
+  "columns": null
 }
 ```
 
@@ -122,25 +115,28 @@ ccbar --init-config   # → ~/.config/ccbar.json
 |------|------|
 | `rows` | 布局网格——可用项: `5h` `7d` `today` `history` `session` `model` `total` |
 | `columns` | 覆盖终端宽度（`null` = 自动检测） |
-| `pricing` | 每百万 token 价格 |
-| `colors` | `[R, G, B]` 颜色覆盖 |
 
 </details>
+
+插件配置保存在 `~/.claude/plugins/ccbar/config.json`。
 
 ## 工作原理
 
 ```
-stdin JSON → 检测终端宽度 → 获取 OAuth 配额（缓存 30s）
-           → 扫描 ~/.claude/projects/**/*.jsonl（缓存 60s）
-           → 按 message.id 去重 → 按模型定价 → 自适应布局 → stdout
+stdin JSON → 插件运行时 → 扫描 ~/.claude/projects/**/*.jsonl
+           → 按 message.id 去重 → 按模型定价
+           → 自适应布局 → stdout
 ```
 
-OAuth — macOS 自动从 Keychain 读取。Linux/CI：`export CLAUDE_OAUTH_TOKEN="..."`。无 OAuth 时配额条显示 `--`。
+插件命令：
+- `/ccbar:setup` 接管 `statusLine.command`
+- `/ccbar:configure` 编辑插件配置
+- `/ccbar:doctor` 检查插件缓存与状态栏接线
 
 ## 卸载
 
 ```bash
-ccbar --uninstall && pip uninstall ccbar
+/plugin remove ccbar
 ```
 
 ---
