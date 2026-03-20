@@ -39,11 +39,21 @@ It works with **both billing models**: whether you're on the API (pay-per-token)
 ## Install
 
 ```bash
-/plugin install ccbar
+/plugin install ccbar@claude-plugins-official
 /ccbar:setup
 ```
 
-`ccbar` now installs as a native Claude Code plugin. `setup` wires the plugin into `statusLine.command`, and the bundled `SessionStart` hook repairs the wiring if it drifts later.
+Use the command above once `ccbar` is listed in the official Claude Code marketplace.
+
+For local development or pre-listing installs, add this repository as a marketplace first. The repository marketplace manifest lives at `.claude-plugin/marketplace.json`.
+
+```bash
+/plugin marketplace add /absolute/path/to/ccbar
+/plugin install ccbar@ccbar-dev
+/ccbar:setup
+```
+
+`ccbar` installs as a native Claude Code plugin. `setup` wires the plugin into `statusLine.command`, and the bundled `SessionStart` hook repairs the wiring if it drifts later.
 
 ## What you get
 

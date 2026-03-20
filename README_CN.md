@@ -39,7 +39,17 @@ Claude Code 实时成本追踪与配额监控，零依赖。
 ## 安装
 
 ```bash
-/plugin install ccbar
+/plugin install ccbar@claude-plugins-official
+/ccbar:setup
+```
+
+上面的命令用于 `ccbar` 已进入官方 Claude Code 插件市场后的正式安装。
+
+如果你在本地开发，或者市场上架前要先试装，先把当前仓库加成一个 marketplace。仓库内的 marketplace 清单位于 `.claude-plugin/marketplace.json`。
+
+```bash
+/plugin marketplace add /absolute/path/to/ccbar
+/plugin install ccbar@ccbar-dev
 /ccbar:setup
 ```
 

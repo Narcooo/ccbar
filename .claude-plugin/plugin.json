@@ -1,6 +1,6 @@
 {
   "name": "ccbar",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Cost and quota statusline plugin for Claude Code",
   "author": {
     "name": "majunxian"
