@@ -1,10 +1,10 @@
 {
-  "name": "ccbar-dev",
+  "name": "narcooo",
   "owner": {
     "name": "majunxian"
   },
   "metadata": {
-    "description": "Local development marketplace for the ccbar Claude Code plugin."
+    "description": "Public GitHub marketplace for the ccbar Claude Code plugin."
   },
   "plugins": [
     {
