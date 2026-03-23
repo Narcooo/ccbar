@@ -24,8 +24,14 @@ test("release changelog exists", () => {
   assert.equal(existsSync("CHANGELOG.md"), true);
 });
 
-test("tracked python runtime is removed", () => {
-  assert.equal(existsSync("src/ccbar/main.py"), false);
-  assert.equal(existsSync("src/ccbar/__init__.py"), false);
-  assert.equal(existsSync("pyproject.toml"), false);
+test("debug-only python wrapper exists alongside plugin-first install", () => {
+  assert.equal(existsSync("ccbar/main.py"), true);
+  assert.equal(existsSync("ccbar/__init__.py"), true);
+  assert.equal(existsSync("ccbar/__main__.py"), true);
+  assert.equal(existsSync("pyproject.toml"), true);
+
+  const readme = readFileSync("README.md", "utf8");
+  const readmeCn = readFileSync("README_CN.md", "utf8");
+  assert.equal(readme.includes("For local debugging only"), true);
+  assert.equal(readmeCn.includes("如果你只是做本地调试"), true);
 });
