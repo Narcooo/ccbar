@@ -1,0 +1,20 @@
+[project]
+name = "ccbar"
+version = "1.0.0"
+description = "Debug-only Python wrapper for the Node-based ccbar CLI"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Narcooo/ccbar"
+Repository = "https://github.com/Narcooo/ccbar"
+Issues = "https://github.com/Narcooo/ccbar/issues"
+
+[project.scripts]
+ccbar = "ccbar.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
