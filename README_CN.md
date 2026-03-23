@@ -59,11 +59,11 @@ Claude Code 实时成本追踪与配额监控，零依赖。
 
 本地开发 marketplace：
 
-如果你在本地开发，或者市场上架前要先试装，先把当前仓库按文件路径加成一个 marketplace。仓库内的 marketplace 清单位于 `.claude-plugin/marketplace.json`。
+如果你在本地开发，或者市场上架前要先试装，先用独立的开发版 marketplace 清单走文件路径安装。使用 `.claude-plugin/marketplace.dev.json` 可以避免本地调试时覆盖公开 `narcooo` marketplace 标识。
 
 ```bash
-/plugin marketplace add /absolute/path/to/ccbar
-/plugin install ccbar@narcooo
+/plugin marketplace add /absolute/path/to/ccbar/.claude-plugin/marketplace.dev.json
+/plugin install ccbar@ccbar-dev
 /ccbar:setup
 ```
 
