@@ -18,9 +18,9 @@ test("local development uses a distinct dev marketplace manifest and identifier"
   const readme = readFileSync("README.md", "utf8");
   const readmeCn = readFileSync("README_CN.md", "utf8");
 
-  assert.equal(existsSync(".claude-plugin/marketplace.dev.json"), true);
-  assert.equal(readme.includes(".claude-plugin/marketplace.dev.json"), true);
-  assert.equal(readmeCn.includes(".claude-plugin/marketplace.dev.json"), true);
+  assert.equal(existsSync(".claude-plugin/dev-marketplace/marketplace.json"), true);
+  assert.equal(readme.includes(".claude-plugin/dev-marketplace/marketplace.json"), true);
+  assert.equal(readmeCn.includes(".claude-plugin/dev-marketplace/marketplace.json"), true);
   assert.equal(readme.includes("ccbar@ccbar-dev"), true);
   assert.equal(readmeCn.includes("ccbar@ccbar-dev"), true);
   assert.equal(readme.includes("ccbar@narcooo"), true);
@@ -41,8 +41,8 @@ test("README documents marketplace-first install and local dev fallback", () => 
 
   assert.equal(readme.includes("ccbar@claude-plugins-official"), true);
   assert.equal(readmeCn.includes("ccbar@claude-plugins-official"), true);
-  assert.equal(readme.includes(".claude-plugin/marketplace.dev.json"), true);
-  assert.equal(readmeCn.includes(".claude-plugin/marketplace.dev.json"), true);
+  assert.equal(readme.includes(".claude-plugin/dev-marketplace/marketplace.json"), true);
+  assert.equal(readmeCn.includes(".claude-plugin/dev-marketplace/marketplace.json"), true);
 });
 
 test("READMEs distinguish official, public github, local development, and python debug installs", () => {

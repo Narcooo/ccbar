@@ -59,10 +59,10 @@ Use this public GitHub marketplace path when you want the self-serve GitHub dist
 
 Local development marketplace:
 
-For local development or pre-listing installs, add the dedicated development marketplace manifest from a filesystem path. Use `.claude-plugin/marketplace.dev.json` so local work does not clobber the public `narcooo` marketplace identity.
+For local development or pre-listing installs, add the dedicated development marketplace manifest from a filesystem path. Use `.claude-plugin/dev-marketplace/marketplace.json` so local work does not clobber the public `narcooo` marketplace identity.
 
 ```bash
-/plugin marketplace add /absolute/path/to/ccbar/.claude-plugin/marketplace.dev.json
+/plugin marketplace add /absolute/path/to/ccbar/.claude-plugin/dev-marketplace/marketplace.json
 /plugin install ccbar@ccbar-dev
 /ccbar:setup
 ```
