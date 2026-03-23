@@ -55,6 +55,13 @@ For local development or pre-listing installs, add this repository as a marketpl
 
 `ccbar` installs as a native Claude Code plugin. `setup` wires the plugin into `statusLine.command`, and the bundled `SessionStart` hook repairs the wiring if it drifts later.
 
+For local debugging only, there is also a thin Python wrapper around the built Node CLI. This is not the primary install path and still requires the local Node build output.
+
+```bash
+npm run build
+python -m ccbar doctor
+```
+
 ## What you get
 
 ```

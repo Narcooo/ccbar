@@ -55,6 +55,13 @@ Claude Code 实时成本追踪与配额监控，零依赖。
 
 `ccbar` 现在是原生 Claude Code 插件。`setup` 会把插件接到 `statusLine.command`，之后 `SessionStart` hook 会在配置漂移时自动修复。
 
+如果你只是做本地调试，也可以用一个很薄的 Python wrapper 去调用已经构建好的 Node CLI。这个入口不是正式安装方式，前提仍然是先把本地 Node 构建产物生成出来。
+
+```bash
+npm run build
+python -m ccbar doctor
+```
+
 ## 你看到什么
 
 ```
