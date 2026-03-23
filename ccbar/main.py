@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
+SUBCOMMANDS_WITHOUT_STDIN = {"setup", "doctor", "repair"}
+
 
 def _repo_root() -> str:
     return str(Path(__file__).resolve().parent.parent)
@@ -41,7 +43,8 @@ def cli(argv: Optional[Sequence[str]] = None, stdin_data: Optional[bytes] = None
         )
         return 1
 
-    if stdin_data is None:
+    should_read_stdin = not (args and args[0] in SUBCOMMANDS_WITHOUT_STDIN)
+    if stdin_data is None and should_read_stdin:
         stdin_data = sys.stdin.buffer.read()
 
     completed = subprocess.run(
@@ -53,4 +56,3 @@ def cli(argv: Optional[Sequence[str]] = None, stdin_data: Optional[bytes] = None
 
 def main() -> None:
     raise SystemExit(cli())
-

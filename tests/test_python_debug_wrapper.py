@@ -66,6 +66,26 @@ class PythonDebugWrapperTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("Node 20+", stderr.getvalue())
 
+    def test_subcommand_does_not_read_stdin_when_data_omitted(self):
+        completed = mock.Mock(returncode=0)
+        read_mock = mock.Mock(side_effect=AssertionError("stdin should not be read"))
+        fake_stdin = mock.Mock(buffer=mock.Mock(read=read_mock))
+
+        with mock.patch.object(ccbar_main, "_dist_cli_path", return_value="/repo/dist/cli.js"), mock.patch.object(
+            ccbar_main, "_find_node", return_value="node"
+        ), mock.patch.object(
+            ccbar_main.os.path, "exists", return_value=True
+        ), mock.patch(
+            "sys.stdin", fake_stdin
+        ), mock.patch(
+            "subprocess.run", return_value=completed
+        ) as run_mock:
+            exit_code = ccbar_main.cli(["doctor"])
+
+        self.assertEqual(exit_code, 0)
+        read_mock.assert_not_called()
+        self.assertIsNone(run_mock.call_args.kwargs["input"])
+
 
 if __name__ == "__main__":
     unittest.main()
