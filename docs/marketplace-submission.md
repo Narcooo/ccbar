@@ -12,6 +12,19 @@ Target marketplace: `claude-plugins-official`
 - Marketplace docs: `https://code.claude.com/docs/en/plugin-marketplaces`
 - Plugin reference docs: `https://code.claude.com/docs/en/plugins-reference`
 
+## Public GitHub marketplace path
+
+- Public GitHub marketplace install is available now:
+
+```bash
+/plugin marketplace add https://github.com/Narcooo/ccbar
+/plugin install ccbar@narcooo
+/ccbar:setup
+```
+
+- Public marketplace identifier: `narcooo`
+- This GitHub-backed distribution is separate from the official Anthropic marketplace submission flow below.
+
 ## Submission checklist
 
 - [x] Public source repository exists: `https://github.com/Narcooo/ccbar`
