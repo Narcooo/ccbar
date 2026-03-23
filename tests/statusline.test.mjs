@@ -52,17 +52,89 @@ const INPUT = {
   },
 };
 
+const QUOTA = {
+  five_hour: {
+    utilization: 42,
+    resets_at: "2026-03-19T11:00:00Z",
+  },
+  seven_day: {
+    utilization: 18,
+    resets_at: "2026-03-20T10:00:00Z",
+  },
+};
+
 test("renderStatusline drops trailing columns on narrow widths without truncating cells", () => {
   const output = renderStatusline(INPUT, {
     tokens: TOKENS,
     quota: null,
     columns: 50,
+    config: {
+      rows: [["5h", "today", "today"], ["7d", "session", "session"]],
+    },
     now: new Date("2026-03-19T10:00:00Z"),
   });
 
   assert.equal(output.includes("..."), false);
   assert.equal(output.includes("5h"), true);
   assert.equal(output.includes("sess"), true);
+});
+
+test("renderStatusline treats the legacy default rows as responsive defaults", () => {
+  const output = renderStatusline(INPUT, {
+    tokens: TOKENS,
+    quota: null,
+    columns: 110,
+    config: {
+      rows: [["5h", "today", "history"], ["7d", "session", "total"]],
+    },
+    now: new Date("2026-03-19T10:00:00Z"),
+  });
+
+  assert.equal(output.includes("today"), true);
+  assert.equal(output.includes("total"), true);
+  assert.equal(output.includes("sess"), false);
+});
+
+test("renderStatusline switches to the compact default layout on narrow auto widths", () => {
+  const output = renderStatusline(INPUT, {
+    tokens: TOKENS,
+    quota: null,
+    columns: 110,
+    config: {},
+    now: new Date("2026-03-19T10:00:00Z"),
+  });
+
+  assert.equal(output.includes("today"), true);
+  assert.equal(output.includes("total"), true);
+  assert.equal(output.includes("sess"), false);
+  assert.equal(output.includes("month"), false);
+});
+
+test("renderStatusline restores ANSI colors for standard metrics", () => {
+  const output = renderStatusline(INPUT, {
+    tokens: TOKENS,
+    quota: null,
+    columns: 140,
+    now: new Date("2026-03-19T10:00:00Z"),
+  });
+
+  assert.equal(output.includes("\u001b["), true);
+  assert.equal(output.includes("today"), true);
+  assert.equal(output.includes("sess"), true);
+});
+
+test("renderStatusline renders colored 5h and 7d quota bars", () => {
+  const output = renderStatusline(INPUT, {
+    tokens: TOKENS,
+    quota: QUOTA,
+    columns: 140,
+    now: new Date("2026-03-19T10:00:00Z"),
+  });
+
+  assert.equal(output.includes("\u001b["), true);
+  assert.equal(output.includes("━"), true);
+  assert.equal(output.includes("42%"), true);
+  assert.equal(output.includes("18%"), true);
 });
 
 test("main reads Claude stdin JSON and writes rendered statusline", async () => {
@@ -82,7 +154,7 @@ test("main reads Claude stdin JSON and writes rendered statusline", async () => 
       },
     },
   };
-  let stdout = "";
+  const writes = [];
   const previousProjectsDir = process.env.CCBAR_PROJECTS_DIR;
 
   await mkdir(projectDir, { recursive: true });
@@ -95,7 +167,7 @@ test("main reads Claude stdin JSON and writes rendered statusline", async () => 
       {
         readStdin: async () => JSON.stringify(INPUT),
         writeStdout: (value) => {
-          stdout += value;
+          writes.push(value);
         },
       },
     );
@@ -107,6 +179,9 @@ test("main reads Claude stdin JSON and writes rendered statusline", async () => 
     }
   }
 
-  assert.equal(stdout.includes("5h"), true);
-  assert.equal(stdout.includes("today"), true);
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].includes("5h"), true);
+  assert.equal(writes[0].endsWith("\n"), true);
+  assert.equal(writes[1].includes("7d"), true);
+  assert.equal(writes[1].endsWith("\n"), true);
 });

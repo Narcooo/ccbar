@@ -83,7 +83,7 @@ Row 1:  5h quota bar + countdown · today tokens + cost › proj tokens ♻cache
 Row 2:  7d quota bar + countdown · session cost + $/h + →projection + duration + ctx% + lines · total cost › proj tokens ♻cache cost + path
 ```
 
-Terminal too narrow? Trailing columns drop automatically. Content within columns is never truncated.
+Terminal too narrow? ccbar switches to a compact 2x2 layout first, then drops trailing columns only as a last resort. Content within columns is never truncated.
 
 ## Lightweight by design
 
@@ -137,15 +137,18 @@ Either way, you get a single statusline that tells the full story.
 
 ```json
 {
-  "rows": [["5h", "today", "history"], ["7d", "session", "total"]],
+  "compactRows": [["5h", "today"], ["7d", "total"]],
+  "compactBreakpoint": 113,
   "columns": null
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `rows` | Layout grid — items: `5h` `7d` `today` `history` `session` `model` `total` |
-| `columns` | Override terminal width (`null` = auto-detect) |
+| `rows` | Fixed wide layout override — items: `5h` `7d` `today` `history` `session` `model` `total` |
+| `compactRows` | Narrow-layout override. Omit it to use the built-in compact layout. |
+| `compactBreakpoint` | Width threshold that switches from wide to compact layout. |
+| `columns` | Override detected width (`null` = auto-detect, with a safe fallback when no width signal is available) |
 
 </details>
 

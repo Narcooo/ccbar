@@ -5,7 +5,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { isDirectExecution } from "../dist/cli.js";
+import { DEFAULT_AUTO_COLUMNS } from "../dist/config.js";
+import { isDirectExecution, resolveColumns } from "../dist/cli.js";
 
 test("isDirectExecution treats /tmp and /private/tmp as the same file", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "ccbar-cli-entry-"));
@@ -17,4 +18,23 @@ test("isDirectExecution treats /tmp and /private/tmp as the same file", async ()
   const metaUrl = pathToFileURL(scriptPath).href;
 
   assert.equal(isDirectExecution(metaUrl, tmpAliasPath), true);
+});
+
+test("resolveColumns prefers explicit overrides, then runtime width, then safe fallback", () => {
+  assert.equal(
+    resolveColumns(96, { stdoutColumns: 120, envColumns: "88" }),
+    96,
+  );
+  assert.equal(
+    resolveColumns(null, { stdoutColumns: 118, envColumns: "88" }),
+    118,
+  );
+  assert.equal(
+    resolveColumns(null, { stdoutColumns: undefined, envColumns: "101" }),
+    101,
+  );
+  assert.equal(
+    resolveColumns(null, { stdoutColumns: undefined, envColumns: undefined }),
+    DEFAULT_AUTO_COLUMNS,
+  );
 });

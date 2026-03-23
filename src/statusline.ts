@@ -1,4 +1,10 @@
-import { DEFAULT_LAYOUT, type PluginConfig } from "./config.js";
+import {
+  DEFAULT_AUTO_COLUMNS,
+  DEFAULT_COMPACT_BREAKPOINT,
+  DEFAULT_COMPACT_LAYOUT,
+  DEFAULT_LAYOUT,
+  type PluginConfig,
+} from "./config.js";
 import type { TokenStats } from "./transcript.js";
 
 type StatuslineInput = {
@@ -35,6 +41,147 @@ type Cell = {
 type StatsBucket = Omit<TokenStats, "projects">;
 
 const ANSI_RE = /\u001b\[[0-9;]*m/g;
+const RESET = "\u001b[0m";
+
+const COLORS = {
+  sep: [60, 60, 70],
+  label: [70, 110, 180],
+  sess: [80, 105, 170],
+  today: [65, 120, 175],
+  week: [75, 115, 165],
+  month: [85, 100, 160],
+  ctx: [60, 125, 185],
+  cost: [255, 210, 60],
+  burn: [255, 190, 50],
+  proj_: [240, 180, 50],
+  tleft: [170, 150, 230],
+  dur: [180, 155, 220],
+  time: [240, 170, 110],
+  tok: [200, 210, 230],
+  model: [80, 220, 170],
+  proj: [255, 140, 80],
+  hit: [200, 170, 100],
+  cache: [170, 145, 110],
+  dim: [120, 120, 140],
+  empty: [45, 45, 45],
+  total: [110, 155, 200],
+  "lines+": [80, 210, 100],
+  "lines-": [220, 90, 90],
+} as const;
+
+type ColorName = keyof typeof COLORS;
+
+function rgb(r: number, g: number, b: number): string {
+  return `\u001b[1;38;2;${r};${g};${b}m`;
+}
+
+function paint(name: ColorName, value: string): string {
+  const [r, g, b] = COLORS[name];
+  return `${rgb(r, g, b)}${value}${RESET}`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function hslRgb(h: number, s = 0.8, l = 0.52): [number, number, number] {
+  const hue = clamp(h, 0, 120);
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = l - c / 2;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hue < 60) {
+    r = c;
+    g = x;
+  } else {
+    r = x;
+    g = c;
+  }
+
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+  ];
+}
+
+function gradientColor(pct: number): string {
+  const ratio = clamp(pct, 0, 100) / 100;
+  const hue = 120 * (1 - ratio * ratio);
+  const [r, g, b] = hslRgb(hue);
+  return rgb(r, g, b);
+}
+
+function contextColor(pct: number): string {
+  const ratio = clamp(pct, 0, 100) / 100;
+  let r: number;
+  let g: number;
+  let b: number;
+
+  if (ratio < 0.5) {
+    const f = ratio / 0.5;
+    r = 140 + 95 * f;
+    g = 150 - 10 * f;
+    b = 170 - 100 * f;
+  } else {
+    const f = (ratio - 0.5) / 0.5;
+    r = 235 + 20 * f;
+    g = 140 - 80 * f;
+    b = 70 - 40 * f;
+  }
+
+  return rgb(Math.round(r), Math.round(g), Math.round(b));
+}
+
+function gradientBar(pct: number, width = 10): string {
+  const clamped = clamp(pct, 0, 100);
+  let filled = Math.floor((clamped * width) / 100);
+  if (clamped > 0 && filled === 0) {
+    filled = 1;
+  }
+
+  let bar = "";
+  for (let index = 0; index < filled; index += 1) {
+    const hue = 120 * (1 - (index + 0.5) / width);
+    const [r, g, b] = hslRgb(hue);
+    bar += `${rgb(r, g, b)}━`;
+  }
+
+  if (filled < width) {
+    bar += `${paint("empty", "─".repeat(width - filled))}`;
+  } else {
+    bar += RESET;
+  }
+
+  return `${bar}${RESET}`;
+}
+
+function formatTimeLeft(value: unknown, now: Date): string {
+  if (typeof value !== "string" || !value) {
+    return "";
+  }
+
+  const resetAt = new Date(value);
+  if (Number.isNaN(resetAt.getTime())) {
+    return "";
+  }
+
+  const seconds = Math.floor((resetAt.getTime() - now.getTime()) / 1000);
+  if (seconds <= 0) {
+    return paint("tleft", "resetting");
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 24) {
+    return paint("tleft", `${Math.floor(hours / 24)}d${hours % 24}h`);
+  }
+
+  return paint("tleft", `${hours}h${minutes.toString().padStart(2, "0")}m`);
+}
 
 function visibleLength(value: string): number {
   return value.replaceAll(ANSI_RE, "").length;
@@ -78,6 +225,27 @@ function formatDuration(durationMs: number): string {
   return `${totalHours}h${totalMinutes % 60}m`;
 }
 
+function formatTokenCache(
+  tokens: number,
+  cacheReadTokens: number,
+  inputTokens: number,
+  includeHitRate: boolean,
+): string {
+  let value = paint("tok", formatTokens(tokens));
+  if (cacheReadTokens <= 0) {
+    return value;
+  }
+
+  value += ` ${paint("cache", "♻")}${paint("hit", formatTokens(cacheReadTokens))}`;
+  if (includeHitRate && inputTokens > 0) {
+    const totalInput = cacheReadTokens + inputTokens;
+    const hitRate = totalInput > 0 ? Math.trunc((cacheReadTokens * 100) / totalInput) : 0;
+    value += `${paint("cache", `/${hitRate}%`)}`;
+  }
+
+  return value;
+}
+
 function shortenPath(input: string, maxLength = 25): string {
   if (!input || input.length <= maxLength) {
     return input;
@@ -112,69 +280,173 @@ function getProjectStats(tokens: TokenStats, projectDir: string): StatsBucket | 
   return null;
 }
 
-function render5h(quota: Record<string, any> | null): Cell {
-  const utilization = quota?.five_hour?.utilization;
+function hasConfiguredRows(rows: PluginConfig["rows"] | PluginConfig["compactRows"]): rows is string[][] {
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+function rowsEqual(left: string[][], right: string[][]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((row, rowIndex) =>
+      row.length === (right[rowIndex]?.length ?? -1) &&
+      row.every((item, columnIndex) => item === right[rowIndex]?.[columnIndex]),
+    )
+  );
+}
+
+function resolveRows(config: PluginConfig | undefined, maxColumns: number): string[][] {
+  const configuredRows = hasConfiguredRows(config?.rows) ? config.rows : null;
+  const configuredCompactRows = hasConfiguredRows(config?.compactRows)
+    ? config.compactRows
+    : null;
+  const hasCustomWideRows =
+    configuredRows != null && !rowsEqual(configuredRows, DEFAULT_LAYOUT);
+  const wideRows: string[][] = hasCustomWideRows ? configuredRows : DEFAULT_LAYOUT;
+
+  if (hasCustomWideRows && configuredCompactRows == null) {
+    return wideRows;
+  }
+
+  const compactRows: string[][] = configuredCompactRows ?? DEFAULT_COMPACT_LAYOUT;
+  const compactBreakpoint = Math.max(
+    1,
+    config?.compactBreakpoint ?? DEFAULT_COMPACT_BREAKPOINT,
+  );
+
+  return maxColumns <= compactBreakpoint ? compactRows : wideRows;
+}
+
+function render5h(quota: Record<string, any> | null, now: Date): Cell {
+  const fiveHour = quota?.five_hour as Record<string, any> | undefined;
+  const utilization =
+    typeof fiveHour?.utilization === "number" ? Math.trunc(fiveHour.utilization) : null;
+
+  if (utilization == null) {
+    return {
+      left: `${paint("label", "5h")} ${paint("dim", "--")}`,
+    };
+  }
+
+  const resetAt = typeof fiveHour?.resets_at === "string" ? fiveHour.resets_at : null;
+
   return {
-    left: utilization == null ? "5h --" : `5h ${Math.trunc(utilization)}%`,
+    left:
+      `${paint("label", "5h")} ${gradientBar(utilization)} ` +
+      `${gradientColor(utilization)}${utilization}%${RESET}`,
+    right: formatTimeLeft(resetAt, now),
   };
 }
 
-function render7d(quota: Record<string, any> | null): Cell {
-  const utilization = quota?.seven_day?.utilization;
+function render7d(quota: Record<string, any> | null, now: Date): Cell {
+  const sevenDay = quota?.seven_day as Record<string, any> | undefined;
+  const utilization =
+    typeof sevenDay?.utilization === "number" ? Math.trunc(sevenDay.utilization) : null;
+
+  if (utilization == null) {
+    return {
+      left: `${paint("label", "7d")} ${paint("dim", "--")}`,
+    };
+  }
+
+  const resetAt = typeof sevenDay?.resets_at === "string" ? sevenDay.resets_at : null;
+
   return {
-    left: utilization == null ? "7d --" : `7d ${Math.trunc(utilization)}%`,
+    left:
+      `${paint("label", "7d")} ${gradientBar(utilization)} ` +
+      `${gradientColor(utilization)}${utilization}%${RESET}`,
+    right: formatTimeLeft(resetAt, now),
   };
 }
 
 function renderToday(globalStats: StatsBucket, projectStats: StatsBucket | null): Cell {
-  const left = `today ${formatTokens(globalStats.today_tok)} ${formatCost(globalStats.today_cost + globalStats.today_ccost)}`;
+  const left =
+    `${paint("today", "today")} ${paint("tok", formatTokens(globalStats.today_tok))}`;
 
   if (!projectStats) {
-    return { left };
+    return {
+      left,
+      right: paint("cost", formatCost(globalStats.today_cost + globalStats.today_ccost)),
+    };
   }
 
   return {
-    left: `${left} › proj ${formatTokens(projectStats.today_tok)}`,
-    right: formatCost(projectStats.today_cost + projectStats.today_ccost),
+    left:
+      `${left} ${paint("cost", formatCost(globalStats.today_cost + globalStats.today_ccost))}` +
+      ` ${paint("dim", "›")} ${paint("proj", "proj")} ` +
+      `${formatTokenCache(
+        projectStats.today_tok,
+        projectStats.today_cr_tok,
+        projectStats.today_in_tok,
+        true,
+      )}`,
+    right: paint("cost", formatCost(projectStats.today_cost + projectStats.today_ccost)),
   };
 }
 
 function renderHistory(globalStats: StatsBucket, projectStats: StatsBucket | null): Cell {
   let left =
-    `week ${formatCost(globalStats.week_cost + globalStats.week_ccost)} ` +
-    `│ month ${formatTokens(globalStats.month_tok)} ${formatCost(globalStats.month_cost + globalStats.month_ccost)}`;
+    `${paint("week", "week")} ` +
+    `${paint("cost", formatCost(globalStats.week_cost + globalStats.week_ccost))}`;
 
   if (projectStats) {
-    left += ` › proj ${formatCost(projectStats.month_cost + projectStats.month_ccost)}`;
+    left +=
+      ` ${paint("dim", "›")} ${paint("proj", "proj")} ` +
+      `${paint("tok", formatTokens(projectStats.week_tok))} ` +
+      `${paint("cost", formatCost(projectStats.week_cost + projectStats.week_ccost))}`;
+  }
+
+  left +=
+    ` ${paint("sep", "│")} ${paint("month", "month")} ` +
+    `${paint("tok", formatTokens(globalStats.month_tok))} ` +
+    `${paint("cost", formatCost(globalStats.month_cost + globalStats.month_ccost))}`;
+
+  if (projectStats) {
+    left +=
+      ` ${paint("dim", "›")} ${paint("proj", "proj")} ` +
+      `${paint("cost", formatCost(projectStats.month_cost + projectStats.month_ccost))}`;
   }
 
   return { left };
 }
 
-function renderSession(input: StatuslineInput): Cell {
+function renderSession(input: StatuslineInput, quota: Record<string, any> | null, now: Date): Cell {
   const sessionCost = input.cost?.total_cost_usd ?? 0;
   const totalDurationMs = input.cost?.total_duration_ms ?? 0;
   const hours = totalDurationMs > 0 ? totalDurationMs / 3_600_000 : 0;
   const burnRate = hours > 0.01 ? sessionCost / hours : 0;
   const duration = formatDuration(totalDurationMs);
   const ctx = input.context_window?.used_percentage ?? 0;
-  let left = `sess ${formatCost(sessionCost)}`;
+  let left = `${paint("sess", "sess")} ${paint("cost", formatCost(sessionCost))}`;
 
   if (burnRate > 0) {
-    left += ` ${formatCost(burnRate)}/h`;
+    left += ` ${paint("burn", `${formatCost(burnRate)}/h`)}`;
+  }
+
+  const resetAt = quota?.five_hour && typeof quota.five_hour === "object"
+    ? (quota.five_hour as Record<string, any>).resets_at
+    : null;
+  if (burnRate > 0 && typeof resetAt === "string" && resetAt) {
+    const remainingHours = Math.max(0, (new Date(resetAt).getTime() - now.getTime()) / 3_600_000);
+    if (!Number.isNaN(remainingHours) && remainingHours > 0) {
+      const projected = sessionCost + burnRate * remainingHours;
+      left += ` ${paint("proj_", `→${formatCost(projected)}`)}`;
+    }
   }
 
   if (duration) {
-    left += ` ${duration}`;
+    left += ` ${paint("dur", duration)}`;
   }
 
   if (ctx > 0) {
-    left += ` ${Math.trunc(ctx)}%`;
+    left += ` ${contextColor(ctx)}${Math.trunc(ctx)}%${RESET}`;
   }
 
   return {
     left,
-    right: `+${input.cost?.total_lines_added ?? 0}/-${input.cost?.total_lines_removed ?? 0}`,
+    right:
+      `${paint("lines+", `+${input.cost?.total_lines_added ?? 0}`)}` +
+      `${paint("dim", "/")}` +
+      `${paint("lines-", `-${input.cost?.total_lines_removed ?? 0}`)}`,
   };
 }
 
@@ -183,24 +455,33 @@ function renderTotal(
   projectStats: StatsBucket | null,
   cwd: string,
 ): Cell {
-  let left = `total ${formatCost(globalStats.all_cost + globalStats.all_ccost)}`;
+  let left = `${paint("total", "total")} ${paint("cost", formatCost(globalStats.all_cost + globalStats.all_ccost))}`;
 
   if (projectStats) {
     left +=
-      ` › proj ${formatTokens(projectStats.all_tok)} ` +
-      `${formatCost(projectStats.all_cost + projectStats.all_ccost)}`;
+      ` ${paint("dim", "›")} ${paint("proj", "proj")} ` +
+      `${formatTokenCache(
+        projectStats.all_tok,
+        projectStats.all_cr_tok,
+        projectStats.all_in_tok,
+        false,
+      )} ` +
+      `${paint("cost", formatCost(projectStats.all_cost + projectStats.all_ccost))}`;
   }
 
   return {
     left,
-    right: shortenPath(cwd),
+    right: paint("dim", shortenPath(cwd)),
   };
 }
 
-function renderModel(input: StatuslineInput): Cell {
+function renderModel(input: StatuslineInput, now: Date): Cell {
   const ctx = Math.trunc(input.context_window?.used_percentage ?? 0);
   return {
-    left: `ctx ${ctx}% ${getModelName(input)}`,
+    left:
+      `${paint("ctx", "ctx")} ${contextColor(ctx)}${ctx}%${RESET} ` +
+      `${paint("model", getModelName(input))}`,
+    right: paint("time", now.toTimeString().slice(0, 5)),
   };
 }
 
@@ -210,22 +491,23 @@ function renderItem(
   tokens: TokenStats,
   projectStats: StatsBucket | null,
   quota: Record<string, any> | null,
+  now: Date,
 ): Cell {
   switch (item) {
     case "5h":
-      return render5h(quota);
+      return render5h(quota, now);
     case "7d":
-      return render7d(quota);
+      return render7d(quota, now);
     case "today":
       return renderToday(tokens, projectStats);
     case "history":
       return renderHistory(tokens, projectStats);
     case "session":
-      return renderSession(input);
+      return renderSession(input, quota, now);
     case "total":
       return renderTotal(tokens, projectStats, input.workspace?.current_dir ?? input.cwd ?? "");
     case "model":
-      return renderModel(input);
+      return renderModel(input, now);
     default:
       return { left: item };
   }
@@ -234,14 +516,15 @@ function renderItem(
 export function renderStatusline(input: StatuslineInput, state: RenderState): string {
   const tokens = state.tokens;
   const quota = state.quota;
+  const now = state.now ?? new Date();
   const projectDir = input.workspace?.project_dir ?? input.workspace?.current_dir ?? input.cwd ?? "";
   const projectStats = getProjectStats(tokens, projectDir);
-  const rows = state.config?.rows ?? DEFAULT_LAYOUT;
-  const separator = " │ ";
-  const maxColumns = Math.max(1, state.columns ?? state.config?.columns ?? 140);
+  const separator = ` ${paint("sep", "│")} `;
+  const maxColumns = Math.max(1, state.columns ?? state.config?.columns ?? DEFAULT_AUTO_COLUMNS);
+  const rows = resolveRows(state.config, maxColumns);
 
   const renderedRows = rows.map((row) =>
-    row.map((item) => renderItem(item, input, tokens, projectStats, quota)),
+    row.map((item) => renderItem(item, input, tokens, projectStats, quota, now)),
   );
 
   let activeColumnCount = Math.max(...renderedRows.map((row) => row.length), 1);
@@ -262,7 +545,7 @@ export function renderStatusline(input: StatuslineInput, state: RenderState): st
 
     const widestRow =
       columnWidths.reduce((sum, width) => sum + width, 0) +
-      separator.length * Math.max(0, activeColumnCount - 1);
+      visibleLength(separator) * Math.max(0, activeColumnCount - 1);
 
     if (widestRow <= maxColumns) {
       return trimmedRows

@@ -22,7 +22,7 @@ export function buildPluginCommand(mode: "render" | "repair" | "doctor" = "rende
 
   return [
     "sh -lc '",
-    'PLUGIN_DIR=$(find "$HOME/.claude/plugins/cache/ccbar/ccbar" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1); ',
+    'PLUGIN_DIR=$(find "$HOME/.claude/plugins/cache" -mindepth 3 -maxdepth 3 -type d -path "*/ccbar/*" 2>/dev/null | sort | tail -n 1); ',
     '[ -n "$PLUGIN_DIR" ] || exit 0; ',
     `exec node "$PLUGIN_DIR/dist/cli.js"${modeArg}`,
     "'",

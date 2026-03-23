@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadConfig } from "./config.js";
+import { DEFAULT_AUTO_COLUMNS, loadConfig } from "./config.js";
 import { doctorStatusline, repairStatusline, setupStatusline } from "./install.js";
 import { renderStatusline } from "./statusline.js";
 import { scanTokenStats } from "./transcript.js";
@@ -40,6 +40,38 @@ export function isDirectExecution(metaUrl: string, argvPath?: string): boolean {
   } catch {
     return false;
   }
+}
+
+function parsePositiveInteger(value: number | string | null | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = Math.trunc(value);
+    return normalized > 0 ? normalized : null;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+  }
+
+  return null;
+}
+
+export function resolveColumns(
+  configuredColumns: number | null | undefined,
+  runtime: {
+    stdoutColumns?: number;
+    envColumns?: string;
+  } = {
+    stdoutColumns: process.stdout.columns,
+    envColumns: process.env.COLUMNS,
+  },
+): number {
+  return (
+    parsePositiveInteger(configuredColumns) ??
+    parsePositiveInteger(runtime.stdoutColumns) ??
+    parsePositiveInteger(runtime.envColumns) ??
+    DEFAULT_AUTO_COLUMNS
+  );
 }
 
 export async function main(
@@ -79,14 +111,17 @@ export async function main(
   const projectsDir =
     process.env.CCBAR_PROJECTS_DIR ?? path.join(os.homedir(), ".claude", "projects");
   const tokens = await scanTokenStats(projectsDir);
+  const columns = resolveColumns(config.columns);
   const output = renderStatusline(input, {
     tokens,
     quota: null,
-    columns: config.columns ?? undefined,
+    columns,
     config,
   });
 
-  io.writeStdout(output);
+  for (const line of output.split("\n")) {
+    io.writeStdout(`${line}\n`);
+  }
 }
 
 if (isDirectExecution(import.meta.url, process.argv[1])) {

@@ -9,7 +9,7 @@ Check:
 - whether `~/.claude/settings.json` exists
 - whether `statusLine` is present
 - whether the configured command points to `ccbar`
-- whether a plugin install exists under `~/.claude/plugins/cache/ccbar/ccbar`
+- whether a plugin install exists under `~/.claude/plugins/cache/*/ccbar/*`
 
 Report:
 - current status

@@ -7,6 +7,14 @@ export const DEFAULT_LAYOUT = [
   ["7d", "session", "total"],
 ];
 
+export const DEFAULT_COMPACT_LAYOUT = [
+  ["5h", "today"],
+  ["7d", "total"],
+];
+
+export const DEFAULT_AUTO_COLUMNS = 110;
+export const DEFAULT_COMPACT_BREAKPOINT = 113;
+
 export const DEFAULT_CONFIG_PATH = path.join(
   os.homedir(),
   ".claude",
@@ -16,9 +24,34 @@ export const DEFAULT_CONFIG_PATH = path.join(
 );
 
 export type PluginConfig = {
-  rows: string[][];
+  rows?: string[][] | null;
+  compactRows?: string[][] | null;
   columns?: number | null;
+  compactBreakpoint?: number | null;
 };
+
+function parseRows(value: unknown): string[][] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const rows = value.map((row) =>
+    Array.isArray(row)
+      ? row.filter((item): item is string => typeof item === "string" && item.length > 0)
+      : [],
+  );
+
+  return rows.length > 0 && rows.every((row) => row.length > 0) ? rows : null;
+}
+
+function parsePositiveInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const normalized = Math.trunc(value);
+  return normalized > 0 ? normalized : null;
+}
 
 export async function loadConfig(
   configPath: string = DEFAULT_CONFIG_PATH,
@@ -27,13 +60,17 @@ export async function loadConfig(
     const content = await readFile(configPath, "utf8");
     const parsed = JSON.parse(content) as Partial<PluginConfig>;
     return {
-      rows: parsed.rows ?? DEFAULT_LAYOUT,
-      columns: parsed.columns ?? null,
+      rows: parseRows(parsed.rows),
+      compactRows: parseRows(parsed.compactRows),
+      columns: parsePositiveInteger(parsed.columns),
+      compactBreakpoint: parsePositiveInteger(parsed.compactBreakpoint),
     };
   } catch {
     return {
-      rows: DEFAULT_LAYOUT,
+      rows: null,
+      compactRows: null,
       columns: null,
+      compactBreakpoint: null,
     };
   }
 }
