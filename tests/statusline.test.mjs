@@ -137,6 +137,23 @@ test("renderStatusline renders colored 5h and 7d quota bars", () => {
   assert.equal(output.includes("18%"), true);
 });
 
+test("renderStatusline keeps compact quota rows short enough for narrow UIs", () => {
+  const output = renderStatusline(INPUT, {
+    tokens: TOKENS,
+    quota: QUOTA,
+    columns: 110,
+    now: new Date("2026-03-19T10:00:00Z"),
+  });
+
+  const lines = output
+    .trimEnd()
+    .split("\n")
+    .map((line) => line.replace(/\u001b\[[0-9;]*m/g, ""));
+
+  assert.equal(lines.length, 2);
+  assert.equal(lines.every((line) => line.length <= 64), true);
+});
+
 test("main reads Claude stdin JSON and writes rendered statusline", async () => {
   const tmpdir = await mkdtemp(path.join(os.tmpdir(), "ccbar-cli-"));
   const projectDir = path.join(tmpdir, "-tmp-demo");

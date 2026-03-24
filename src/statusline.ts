@@ -159,7 +159,7 @@ function gradientBar(pct: number, width = 10): string {
   return `${bar}${RESET}`;
 }
 
-function formatTimeLeft(value: unknown, now: Date): string {
+function formatTimeLeft(value: unknown, now: Date, compact = false): string {
   if (typeof value !== "string" || !value) {
     return "";
   }
@@ -180,7 +180,8 @@ function formatTimeLeft(value: unknown, now: Date): string {
     return paint("tleft", `${Math.floor(hours / 24)}d${hours % 24}h`);
   }
 
-  return paint("tleft", `${hours}h${minutes.toString().padStart(2, "0")}m`);
+  const suffix = minutes.toString().padStart(2, "0");
+  return paint("tleft", compact ? `${hours}h${suffix}` : `${hours}h${suffix}m`);
 }
 
 function visibleLength(value: string): number {
@@ -251,10 +252,16 @@ function shortenPath(input: string, maxLength = 25): string {
     return input;
   }
 
-  const parts = input.split("/");
-  const short = parts.slice(-2).join("/");
-  if (short.length + 2 < input.length) {
-    return `…/${short}`;
+  const parts = input.split("/").filter(Boolean);
+  const basename = parts.at(-1) ?? "";
+  const lastTwo = parts.slice(-2).join("/");
+
+  if (lastTwo && lastTwo.length + 2 <= maxLength) {
+    return `…/${lastTwo}`;
+  }
+
+  if (basename && basename.length + 2 <= maxLength) {
+    return `…/${basename}`;
   }
 
   return `${input.slice(0, maxLength - 1)}…`;
@@ -294,7 +301,10 @@ function rowsEqual(left: string[][], right: string[][]): boolean {
   );
 }
 
-function resolveRows(config: PluginConfig | undefined, maxColumns: number): string[][] {
+function resolveLayout(
+  config: PluginConfig | undefined,
+  maxColumns: number,
+): { rows: string[][]; compact: boolean } {
   const configuredRows = hasConfiguredRows(config?.rows) ? config.rows : null;
   const configuredCompactRows = hasConfiguredRows(config?.compactRows)
     ? config.compactRows
@@ -304,7 +314,10 @@ function resolveRows(config: PluginConfig | undefined, maxColumns: number): stri
   const wideRows: string[][] = hasCustomWideRows ? configuredRows : DEFAULT_LAYOUT;
 
   if (hasCustomWideRows && configuredCompactRows == null) {
-    return wideRows;
+    return {
+      rows: wideRows,
+      compact: false,
+    };
   }
 
   const compactRows: string[][] = configuredCompactRows ?? DEFAULT_COMPACT_LAYOUT;
@@ -313,10 +326,14 @@ function resolveRows(config: PluginConfig | undefined, maxColumns: number): stri
     config?.compactBreakpoint ?? DEFAULT_COMPACT_BREAKPOINT,
   );
 
-  return maxColumns <= compactBreakpoint ? compactRows : wideRows;
+  const compact = maxColumns <= compactBreakpoint;
+  return {
+    rows: compact ? compactRows : wideRows,
+    compact,
+  };
 }
 
-function render5h(quota: Record<string, any> | null, now: Date): Cell {
+function render5h(quota: Record<string, any> | null, now: Date, compact = false): Cell {
   const fiveHour = quota?.five_hour as Record<string, any> | undefined;
   const utilization =
     typeof fiveHour?.utilization === "number" ? Math.trunc(fiveHour.utilization) : null;
@@ -331,13 +348,13 @@ function render5h(quota: Record<string, any> | null, now: Date): Cell {
 
   return {
     left:
-      `${paint("label", "5h")} ${gradientBar(utilization)} ` +
+      `${paint("label", "5h")} ${gradientBar(utilization, compact ? 7 : 10)} ` +
       `${gradientColor(utilization)}${utilization}%${RESET}`,
-    right: formatTimeLeft(resetAt, now),
+    right: formatTimeLeft(resetAt, now, compact),
   };
 }
 
-function render7d(quota: Record<string, any> | null, now: Date): Cell {
+function render7d(quota: Record<string, any> | null, now: Date, compact = false): Cell {
   const sevenDay = quota?.seven_day as Record<string, any> | undefined;
   const utilization =
     typeof sevenDay?.utilization === "number" ? Math.trunc(sevenDay.utilization) : null;
@@ -352,13 +369,17 @@ function render7d(quota: Record<string, any> | null, now: Date): Cell {
 
   return {
     left:
-      `${paint("label", "7d")} ${gradientBar(utilization)} ` +
+      `${paint("label", "7d")} ${gradientBar(utilization, compact ? 7 : 10)} ` +
       `${gradientColor(utilization)}${utilization}%${RESET}`,
-    right: formatTimeLeft(resetAt, now),
+    right: formatTimeLeft(resetAt, now, compact),
   };
 }
 
-function renderToday(globalStats: StatsBucket, projectStats: StatsBucket | null): Cell {
+function renderToday(
+  globalStats: StatsBucket,
+  projectStats: StatsBucket | null,
+  compact = false,
+): Cell {
   const left =
     `${paint("today", "today")} ${paint("tok", formatTokens(globalStats.today_tok))}`;
 
@@ -372,7 +393,7 @@ function renderToday(globalStats: StatsBucket, projectStats: StatsBucket | null)
   return {
     left:
       `${left} ${paint("cost", formatCost(globalStats.today_cost + globalStats.today_ccost))}` +
-      ` ${paint("dim", "›")} ${paint("proj", "proj")} ` +
+      ` ${paint("dim", "›")} ${compact ? "" : `${paint("proj", "proj")} `}` +
       `${formatTokenCache(
         projectStats.today_tok,
         projectStats.today_cr_tok,
@@ -454,12 +475,13 @@ function renderTotal(
   globalStats: StatsBucket,
   projectStats: StatsBucket | null,
   cwd: string,
+  compact = false,
 ): Cell {
   let left = `${paint("total", "total")} ${paint("cost", formatCost(globalStats.all_cost + globalStats.all_ccost))}`;
 
   if (projectStats) {
     left +=
-      ` ${paint("dim", "›")} ${paint("proj", "proj")} ` +
+      ` ${paint("dim", "›")} ${compact ? "" : `${paint("proj", "proj")} `}` +
       `${formatTokenCache(
         projectStats.all_tok,
         projectStats.all_cr_tok,
@@ -471,7 +493,7 @@ function renderTotal(
 
   return {
     left,
-    right: paint("dim", shortenPath(cwd)),
+    right: paint("dim", shortenPath(cwd, compact ? 12 : 25)),
   };
 }
 
@@ -492,25 +514,35 @@ function renderItem(
   projectStats: StatsBucket | null,
   quota: Record<string, any> | null,
   now: Date,
+  compact: boolean,
 ): Cell {
   switch (item) {
     case "5h":
-      return render5h(quota, now);
+      return render5h(quota, now, compact);
     case "7d":
-      return render7d(quota, now);
+      return render7d(quota, now, compact);
     case "today":
-      return renderToday(tokens, projectStats);
+      return renderToday(tokens, projectStats, compact);
     case "history":
       return renderHistory(tokens, projectStats);
     case "session":
       return renderSession(input, quota, now);
     case "total":
-      return renderTotal(tokens, projectStats, input.workspace?.current_dir ?? input.cwd ?? "");
+      return renderTotal(
+        tokens,
+        projectStats,
+        input.workspace?.current_dir ?? input.cwd ?? "",
+        compact,
+      );
     case "model":
       return renderModel(input, now);
     default:
       return { left: item };
   }
+}
+
+function inlineCell(cell: Cell): string {
+  return cell.right ? `${cell.left} ${cell.right}` : cell.left;
 }
 
 export function renderStatusline(input: StatuslineInput, state: RenderState): string {
@@ -521,16 +553,34 @@ export function renderStatusline(input: StatuslineInput, state: RenderState): st
   const projectStats = getProjectStats(tokens, projectDir);
   const separator = ` ${paint("sep", "│")} `;
   const maxColumns = Math.max(1, state.columns ?? state.config?.columns ?? DEFAULT_AUTO_COLUMNS);
-  const rows = resolveRows(state.config, maxColumns);
+  const layout = resolveLayout(state.config, maxColumns);
+  const rows = layout.rows;
 
   const renderedRows = rows.map((row) =>
-    row.map((item) => renderItem(item, input, tokens, projectStats, quota, now)),
+    row.map((item) => renderItem(item, input, tokens, projectStats, quota, now, layout.compact)),
   );
 
   let activeColumnCount = Math.max(...renderedRows.map((row) => row.length), 1);
 
   while (activeColumnCount > 1) {
     const trimmedRows = renderedRows.map((row) => row.slice(0, activeColumnCount));
+
+    if (layout.compact) {
+      const widestRow = Math.max(
+        ...trimmedRows.map((row) =>
+          visibleLength(row.map((cell) => inlineCell(cell)).join(separator))),
+      );
+
+      if (widestRow <= maxColumns) {
+        return trimmedRows
+          .map((row) => row.map((cell) => inlineCell(cell)).join(separator).trimEnd())
+          .join("\n");
+      }
+
+      activeColumnCount -= 1;
+      continue;
+    }
+
     const columnWidths = Array.from({ length: activeColumnCount }, (_, columnIndex) =>
       Math.max(
         ...trimmedRows.map((row) => {
