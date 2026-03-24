@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { DEFAULT_AUTO_COLUMNS, loadConfig } from "./config.js";
 import { doctorStatusline, repairStatusline, setupStatusline } from "./install.js";
+import { resolveRenderableQuota } from "./quota.js";
 import { renderStatusline } from "./statusline.js";
 import { scanTokenStats } from "./transcript.js";
 
@@ -111,10 +112,11 @@ export async function main(
   const projectsDir =
     process.env.CCBAR_PROJECTS_DIR ?? path.join(os.homedir(), ".claude", "projects");
   const tokens = await scanTokenStats(projectsDir);
+  const quota = await resolveRenderableQuota();
   const columns = resolveColumns(config.columns);
   const output = renderStatusline(input, {
     tokens,
-    quota: null,
+    quota,
     columns,
     config,
   });
