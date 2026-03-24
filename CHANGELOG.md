@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 - 2026-03-24
+
+- Fixed live quota rendering so `ccbar` now resolves Claude auth mode, reads the Claude Code OAuth token, fetches `/api/oauth/usage`, and passes real 5h/7d quota data into the statusline.
+- Added auth-aware quota tests covering `claude.ai` detection, API-mode suppression, and live quota cache refresh.
+
 ## 1.1.0 - 2026-03-24
 
 - Added a responsive statusline layout that automatically switches to a compact two-row view on narrow widths.
