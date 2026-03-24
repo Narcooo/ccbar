@@ -1,6 +1,6 @@
 [project]
 name = "ccbar"
-version = "1.0.0"
+version = "1.1.0"
 description = "Debug-only Python wrapper for the Node-based ccbar CLI"
 readme = "README.md"
 license = "MIT"

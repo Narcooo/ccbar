@@ -14,7 +14,7 @@ test("plugin manifest version stays aligned with package metadata", () => {
   const manifest = JSON.parse(readFileSync(".claude-plugin/plugin.json", "utf8"));
 
   assert.equal(manifest.version, pkg.version);
-  assert.equal(pkg.version, "1.0.0");
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
 });
 
 test("marketplace manifest includes a user-facing description", () => {
