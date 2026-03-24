@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 - 2026-03-24
+
+- Fixed compact quota statusline rendering so narrow Claude Code layouts stay on two lines instead of collapsing back into one long row.
+- Shortened compact quota bars, compact countdown text, and narrow-path rendering to keep project and quota data visible on constrained widths.
+- Added a regression test that enforces the compact quota rows stay within narrow UI width limits.
+
 ## 1.1.1 - 2026-03-24
 
 - Fixed live quota rendering so `ccbar` now resolves Claude auth mode, reads the Claude Code OAuth token, fetches `/api/oauth/usage`, and passes real 5h/7d quota data into the statusline.
