@@ -91,8 +91,8 @@ test("renderStatusline treats the legacy default rows as responsive defaults", (
   });
 
   assert.equal(output.includes("today"), true);
-  assert.equal(output.includes("total"), true);
-  assert.equal(output.includes("sess"), false);
+  assert.equal(output.includes("sess"), true);
+  assert.equal(output.includes("total"), false);
 });
 
 test("renderStatusline switches to the compact default layout on narrow auto widths", () => {
@@ -105,8 +105,8 @@ test("renderStatusline switches to the compact default layout on narrow auto wid
   });
 
   assert.equal(output.includes("today"), true);
-  assert.equal(output.includes("total"), true);
-  assert.equal(output.includes("sess"), false);
+  assert.equal(output.includes("sess"), true);
+  assert.equal(output.includes("total"), false);
   assert.equal(output.includes("month"), false);
 });
 

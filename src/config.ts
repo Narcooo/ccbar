@@ -9,7 +9,7 @@ export const DEFAULT_LAYOUT = [
 
 export const DEFAULT_COMPACT_LAYOUT = [
   ["5h", "today"],
-  ["7d", "total"],
+  ["7d", "session"],
 ];
 
 export const DEFAULT_AUTO_COLUMNS = 110;
