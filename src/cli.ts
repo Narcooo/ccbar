@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,22 +58,54 @@ function parsePositiveInteger(value: number | string | null | undefined): number
   return null;
 }
 
+function readTtyColumns(): number | null {
+  const result = spawnSync(
+    "sh",
+    ["-lc", "stty size </dev/tty 2>/dev/null || tput cols </dev/tty 2>/dev/null"],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 250,
+    },
+  );
+
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+
+  const parts = result.stdout.trim().split(/\s+/);
+  return parsePositiveInteger(parts.at(-1));
+}
+
 export function resolveColumns(
   configuredColumns: number | null | undefined,
-  runtime: {
+  runtime?: {
     stdoutColumns?: number;
     envColumns?: string;
-  } = {
-    stdoutColumns: process.stdout.columns,
-    envColumns: process.env.COLUMNS,
+    ttyColumns?: number;
   },
 ): number {
-  return (
-    parsePositiveInteger(configuredColumns) ??
-    parsePositiveInteger(runtime.stdoutColumns) ??
-    parsePositiveInteger(runtime.envColumns) ??
-    DEFAULT_AUTO_COLUMNS
-  );
+  const configured = parsePositiveInteger(configuredColumns);
+  if (configured != null) {
+    return configured;
+  }
+
+  const stdoutColumns = parsePositiveInteger(runtime?.stdoutColumns ?? process.stdout.columns);
+  if (stdoutColumns != null) {
+    return stdoutColumns;
+  }
+
+  const envColumns = parsePositiveInteger(runtime?.envColumns ?? process.env.COLUMNS);
+  if (envColumns != null) {
+    return envColumns;
+  }
+
+  const ttyColumns = parsePositiveInteger(runtime?.ttyColumns);
+  if (ttyColumns != null) {
+    return ttyColumns;
+  }
+
+  return readTtyColumns() ?? DEFAULT_AUTO_COLUMNS;
 }
 
 export async function main(

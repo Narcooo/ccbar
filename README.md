@@ -38,15 +38,6 @@ It works with **both billing models**: whether you're on the API (pay-per-token)
 
 ## Install
 
-Official Claude Code marketplace:
-
-```bash
-/plugin install ccbar@claude-plugins-official
-/ccbar:setup
-```
-
-Use the command above once `ccbar` is listed in the official Claude Code marketplace.
-
 Public GitHub marketplace:
 
 ```bash
@@ -55,7 +46,7 @@ Public GitHub marketplace:
 /ccbar:setup
 ```
 
-Use this public GitHub marketplace path when you want the self-serve GitHub distribution before the official Anthropic listing.
+This is the current public install path.
 
 Local development marketplace:
 

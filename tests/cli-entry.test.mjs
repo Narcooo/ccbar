@@ -38,3 +38,14 @@ test("resolveColumns prefers explicit overrides, then runtime width, then safe f
     DEFAULT_AUTO_COLUMNS,
   );
 });
+
+test("resolveColumns falls back to tty width when stdout and env widths are unavailable", () => {
+  assert.equal(
+    resolveColumns(null, {
+      stdoutColumns: undefined,
+      envColumns: undefined,
+      ttyColumns: 132,
+    }),
+    132,
+  );
+});

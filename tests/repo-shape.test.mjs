@@ -35,26 +35,28 @@ test("README documents plugin installation instead of pip install", () => {
   assert.equal(readmeCn.includes("/plugin install"), true);
 });
 
-test("README documents marketplace-first install and local dev fallback", () => {
+test("README documents public marketplace install and local dev fallback", () => {
   const readme = readFileSync("README.md", "utf8");
   const readmeCn = readFileSync("README_CN.md", "utf8");
 
-  assert.equal(readme.includes("ccbar@claude-plugins-official"), true);
-  assert.equal(readmeCn.includes("ccbar@claude-plugins-official"), true);
+  assert.equal(readme.includes("ccbar@claude-plugins-official"), false);
+  assert.equal(readmeCn.includes("ccbar@claude-plugins-official"), false);
+  assert.equal(readme.includes("ccbar@narcooo"), true);
+  assert.equal(readmeCn.includes("ccbar@narcooo"), true);
   assert.equal(readme.includes(".claude-plugin/dev-marketplace/marketplace.json"), true);
   assert.equal(readmeCn.includes(".claude-plugin/dev-marketplace/marketplace.json"), true);
 });
 
-test("READMEs distinguish official, public github, local development, and python debug installs", () => {
+test("READMEs distinguish public github, local development, and python debug installs", () => {
   const readme = readFileSync("README.md", "utf8");
   const readmeCn = readFileSync("README_CN.md", "utf8");
 
-  assert.equal(readme.includes("official Claude Code marketplace"), true);
-  assert.equal(readme.includes("public GitHub marketplace"), true);
-  assert.equal(readme.includes("local development"), true);
+  assert.equal(readme.includes("official Claude Code marketplace"), false);
+  assert.equal(readme.includes("Public GitHub marketplace"), true);
+  assert.equal(readme.includes("Local development marketplace"), true);
   assert.equal(readme.includes("For local debugging only"), true);
 
-  assert.equal(readmeCn.includes("官方 Claude Code 插件市场"), true);
+  assert.equal(readmeCn.includes("官方 Claude Code 插件市场"), false);
   assert.equal(readmeCn.includes("公开 GitHub marketplace"), true);
   assert.equal(readmeCn.includes("本地开发"), true);
   assert.equal(readmeCn.includes("如果你只是做本地调试"), true);

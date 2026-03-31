@@ -38,15 +38,6 @@ Claude Code 实时成本追踪与配额监控，零依赖。
 
 ## 安装
 
-官方 Claude Code 插件市场：
-
-```bash
-/plugin install ccbar@claude-plugins-official
-/ccbar:setup
-```
-
-上面的命令用于 `ccbar` 已进入官方 Claude Code 插件市场后的正式安装。
-
 公开 GitHub marketplace：
 
 ```bash
@@ -55,7 +46,7 @@ Claude Code 实时成本追踪与配额监控，零依赖。
 /ccbar:setup
 ```
 
-如果你想先走公开的 GitHub 自助安装路径，而不是等官方 Anthropic 市场上架，就用这组命令。
+这是目前公开可用的安装方式。
 
 本地开发 marketplace：
 
