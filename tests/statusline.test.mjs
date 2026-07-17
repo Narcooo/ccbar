@@ -137,6 +137,38 @@ test("renderStatusline renders colored 5h and 7d quota bars", () => {
   assert.equal(output.includes("18%"), true);
 });
 
+test("renderStatusline overlays scoped weekly quota inside the 7d cell", () => {
+  const output = renderStatusline(INPUT, {
+    tokens: TOKENS,
+    quota: {
+      ...QUOTA,
+      limits: [
+        {
+          kind: "weekly_all",
+          group: "weekly",
+          percent: 18,
+          resets_at: "2026-03-20T10:00:00Z",
+        },
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 63,
+          resets_at: "2026-03-20T10:00:00Z",
+          scope: { model: { id: null, display_name: "Fable" } },
+          is_active: true,
+        },
+      ],
+    },
+    columns: 140,
+    now: new Date("2026-03-19T10:00:00Z"),
+  });
+
+  const plain = output.replace(/\[[0-9;]*m/g, "");
+  assert.equal(plain.includes("18%·F63%"), true);
+  assert.equal(output.includes("█"), true);
+  assert.equal(output.includes("▄"), true);
+});
+
 test("renderStatusline keeps compact quota rows short enough for narrow UIs", () => {
   const output = renderStatusline(INPUT, {
     tokens: TOKENS,

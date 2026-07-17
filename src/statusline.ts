@@ -136,6 +136,34 @@ function contextColor(pct: number): string {
   return rgb(Math.round(r), Math.round(g), Math.round(b));
 }
 
+function filledSlots(pct: number, width: number): number {
+  const clamped = clamp(pct, 0, 100);
+  const filled = Math.floor((clamped * width) / 100);
+  return clamped > 0 && filled === 0 ? 1 : filled;
+}
+
+function dualGradientBar(overallPct: number, scopedPct: number, width = 10): string {
+  const overall = filledSlots(overallPct, width);
+  const scoped = filledSlots(scopedPct, width);
+  const filled = Math.max(overall, scoped);
+
+  let bar = "";
+  for (let index = 0; index < filled; index += 1) {
+    const hue = 120 * (1 - (index + 0.5) / width);
+    const [r, g, b] = hslRgb(hue);
+    const glyph = index < overall && index < scoped ? "█" : index < overall ? "▀" : "▄";
+    bar += `${rgb(r, g, b)}${glyph}`;
+  }
+
+  if (filled < width) {
+    bar += `${paint("empty", "─".repeat(width - filled))}`;
+  } else {
+    bar += RESET;
+  }
+
+  return `${bar}${RESET}`;
+}
+
 function gradientBar(pct: number, width = 10): string {
   const clamped = clamp(pct, 0, 100);
   let filled = Math.floor((clamped * width) / 100);
@@ -354,6 +382,37 @@ function render5h(quota: Record<string, any> | null, now: Date, compact = false)
   };
 }
 
+type ScopedWeekly = {
+  percent: number;
+  label: string;
+};
+
+function findScopedWeekly(quota: Record<string, any> | null): ScopedWeekly | null {
+  const limits = quota?.limits;
+  if (!Array.isArray(limits)) {
+    return null;
+  }
+
+  let best: ScopedWeekly | null = null;
+  for (const limit of limits) {
+    if (limit?.kind !== "weekly_scoped" || typeof limit?.percent !== "number") {
+      continue;
+    }
+
+    if (best && limit.percent <= best.percent) {
+      continue;
+    }
+
+    const modelName = limit?.scope?.model?.display_name;
+    best = {
+      percent: Math.trunc(limit.percent),
+      label: typeof modelName === "string" && modelName ? modelName[0].toUpperCase() : "S",
+    };
+  }
+
+  return best;
+}
+
 function render7d(quota: Record<string, any> | null, now: Date, compact = false): Cell {
   const sevenDay = quota?.seven_day as Record<string, any> | undefined;
   const utilization =
@@ -366,11 +425,27 @@ function render7d(quota: Record<string, any> | null, now: Date, compact = false)
   }
 
   const resetAt = typeof sevenDay?.resets_at === "string" ? sevenDay.resets_at : null;
+  const width = compact ? 7 : 10;
+  const scoped = findScopedWeekly(quota);
+
+  if (!scoped) {
+    return {
+      left:
+        `${paint("label", "7d")} ${gradientBar(utilization, width)} ` +
+        `${gradientColor(utilization)}${utilization}%${RESET}`,
+      right: formatTimeLeft(resetAt, now, compact),
+    };
+  }
+
+  const scopedText = compact
+    ? `${scoped.percent}%`
+    : `${scoped.label}${scoped.percent}%`;
 
   return {
     left:
-      `${paint("label", "7d")} ${gradientBar(utilization, compact ? 7 : 10)} ` +
-      `${gradientColor(utilization)}${utilization}%${RESET}`,
+      `${paint("label", "7d")} ${dualGradientBar(utilization, scoped.percent, width)} ` +
+      `${gradientColor(utilization)}${utilization}%${RESET}${paint("dim", "·")}` +
+      `${gradientColor(scoped.percent)}${scopedText}${RESET}`,
     right: formatTimeLeft(resetAt, now, compact),
   };
 }
