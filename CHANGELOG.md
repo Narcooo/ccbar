@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1 - 2026-07-17
+
+- Restyled the scoped weekly overlay from half-block glyphs to line glyphs: `━` where both the overall and scoped 7d limits reach, `─` (colored) where only one does, matching the 5h bar aesthetic.
+
 ## 1.2.0 - 2026-07-17
 
 - Fixed the pricing table for current Claude models: added `claude-fable-5` ($10/$50), `claude-opus-4-8`/`4-7` ($5/$25), and `claude-sonnet-5`; corrected `claude-opus-4-6`/`4-5` from legacy $15/$75 to $5/$25 and `claude-haiku-4-5` from $0.8/$4 to $1/$5. Cost stats previously underestimated Fable 5 usage ~3.3x and Opus 4.8 usage ~40%.
