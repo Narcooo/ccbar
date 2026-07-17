@@ -165,8 +165,9 @@ test("renderStatusline overlays scoped weekly quota inside the 7d cell", () => {
 
   const plain = output.replace(/\[[0-9;]*m/g, "");
   assert.equal(plain.includes("18%·F63%"), true);
-  assert.equal(output.includes("█"), true);
-  assert.equal(output.includes("▄"), true);
+  assert.equal(output.includes("━"), true);
+  assert.equal(output.includes("█"), false);
+  assert.equal(output.includes("▄"), false);
 });
 
 test("renderStatusline keeps compact quota rows short enough for narrow UIs", () => {

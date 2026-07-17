@@ -96,7 +96,7 @@ function dualGradientBar(overallPct, scopedPct, width = 10) {
     for (let index = 0; index < filled; index += 1) {
         const hue = 120 * (1 - (index + 0.5) / width);
         const [r, g, b] = hslRgb(hue);
-        const glyph = index < overall && index < scoped ? "█" : index < overall ? "▀" : "▄";
+        const glyph = index < overall && index < scoped ? "━" : "─";
         bar += `${rgb(r, g, b)}${glyph}`;
     }
     if (filled < width) {
