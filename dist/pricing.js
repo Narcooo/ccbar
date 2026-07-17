@@ -1,9 +1,13 @@
 const PRICING_TABLE = {
-    "claude-opus-4-6": { in: 15, out: 75, cc5: 18.75, cc1h: 30, cr: 1.5 },
-    "claude-opus-4-5": { in: 15, out: 75, cc5: 18.75, cc1h: 30, cr: 1.5 },
+    "claude-fable-5": { in: 10, out: 50, cc5: 12.5, cc1h: 20, cr: 1 },
+    "claude-opus-4-8": { in: 5, out: 25, cc5: 6.25, cc1h: 10, cr: 0.5 },
+    "claude-opus-4-7": { in: 5, out: 25, cc5: 6.25, cc1h: 10, cr: 0.5 },
+    "claude-opus-4-6": { in: 5, out: 25, cc5: 6.25, cc1h: 10, cr: 0.5 },
+    "claude-opus-4-5": { in: 5, out: 25, cc5: 6.25, cc1h: 10, cr: 0.5 },
+    "claude-sonnet-5": { in: 3, out: 15, cc5: 3.75, cc1h: 6, cr: 0.3 },
     "claude-sonnet-4-5": { in: 3, out: 15, cc5: 3.75, cc1h: 6, cr: 0.3 },
     "claude-sonnet-4-6": { in: 3, out: 15, cc5: 3.75, cc1h: 6, cr: 0.3 },
-    "claude-haiku-4-5": { in: 0.8, out: 4, cc5: 1, cc1h: 1.6, cr: 0.08 },
+    "claude-haiku-4-5": { in: 1, out: 5, cc5: 1.25, cc1h: 2, cr: 0.1 },
 };
 const DEFAULT_PRICING = {
     in: 3,
