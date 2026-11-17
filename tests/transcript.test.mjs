@@ -1,71 +1,86 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { reduceMessages, scanTokenStats } from "../dist/transcript.js";
+import { scanTokenStats } from "../dist/transcript.js";
+import { makeTempDir, usageLine, writeLines } from "./helpers/fixture.mjs";
 
-test("reduceMessages keeps the latest record for the same message id", () => {
-  const entries = [
-    {
-      timestamp: "2026-03-19T10:00:00Z",
-      message: {
-        id: "m1",
-        usage: {
-          input_tokens: 1,
-          output_tokens: 1,
-        },
-      },
-    },
-    {
-      timestamp: "2026-03-19T10:00:01Z",
-      message: {
-        id: "m1",
-        usage: {
-          input_tokens: 1,
-          output_tokens: 5,
-        },
-      },
-    },
-  ];
+test("scanTokenStats keeps the latest record for the same message id", async () => {
+  const tmpdir = makeTempDir("ccbar-transcript-");
+  const projectsDir = path.join(tmpdir, "projects");
 
-  const result = reduceMessages(entries);
+  writeLines(path.join(projectsDir, "demo-project", "session.jsonl"), [
+    usageLine({ id: "m1", ts: "2026-03-19T10:00:00Z", input: 1, output: 1 }),
+    usageLine({ id: "m1", ts: "2026-03-19T10:00:01Z", input: 1, output: 5 }),
+  ]);
 
-  assert.equal(result.length, 1);
-  assert.equal(result[0].message.usage.output_tokens, 5);
+  const stats = await scanTokenStats(
+    projectsDir,
+    path.join(tmpdir, "cache"),
+    new Date("2026-03-19T12:00:00Z"),
+  );
+
+  assert.equal(stats.all_tok, 6);
 });
 
 test("scanTokenStats deduplicates message ids across project files", async () => {
-  const tmpdir = await mkdtemp(path.join(os.tmpdir(), "ccbar-transcript-"));
-  const projectDir = path.join(tmpdir, "demo-project");
-  const usage = {
-    input_tokens: 1000,
-    output_tokens: 200,
-    cache_creation_input_tokens: 0,
-    cache_read_input_tokens: 0,
-  };
-  const entry = {
-    timestamp: "2026-03-14T10:00:00Z",
-    type: "assistant",
-    message: {
-      id: "msg_same",
-      model: "claude-sonnet-4-6",
-      usage,
-    },
-  };
+  const tmpdir = makeTempDir("ccbar-transcript-");
+  const projectsDir = path.join(tmpdir, "projects");
+  const projectDir = path.join(projectsDir, "demo-project");
+  const line = usageLine({ id: "msg_same", ts: "2026-03-14T10:00:00Z", input: 1000, output: 200 });
 
-  await mkdir(path.join(projectDir, "subagents"), { recursive: true });
-  await writeFile(path.join(projectDir, "parent.jsonl"), `${JSON.stringify(entry)}\n`, "utf8");
-  await writeFile(
-    path.join(projectDir, "subagents", "child.jsonl"),
-    `${JSON.stringify(entry)}\n`,
-    "utf8",
+  writeLines(path.join(projectDir, "parent.jsonl"), [line]);
+  writeLines(path.join(projectDir, "subagents", "child.jsonl"), [line]);
+
+  const stats = await scanTokenStats(
+    projectsDir,
+    path.join(tmpdir, "cache"),
+    new Date("2026-03-14T12:00:00Z"),
   );
-
-  const stats = await scanTokenStats(tmpdir, new Date("2026-03-14T12:00:00Z"));
 
   assert.equal(stats.all_tok, 1200);
   assert.equal(Number(stats.all_cost.toFixed(6)), 0.006);
   assert.equal(stats.projects["demo-project"].all_tok, 1200);
+});
+
+test("scanTokenStats returns zero totals when the projects directory does not exist", async () => {
+  const tmpdir = makeTempDir("ccbar-transcript-");
+  const stats = await scanTokenStats(
+    path.join(tmpdir, "missing"),
+    path.join(tmpdir, "cache"),
+    new Date("2026-03-14T12:00:00Z"),
+  );
+
+  assert.equal(stats.all_tok, 0);
+  assert.deepEqual(stats.projects, {});
+});
+
+test("scanTokenStats reads lines longer than one read chunk", async () => {
+  const tmpdir = makeTempDir("ccbar-transcript-");
+  const projectsDir = path.join(tmpdir, "projects");
+  const padding = JSON.stringify({ type: "user", message: { content: "x".repeat(3 * 1024 * 1024) } });
+  const bigUsage = JSON.stringify({
+    type: "assistant",
+    timestamp: "2026-03-14T10:00:00Z",
+    message: {
+      id: "big",
+      model: "claude-sonnet-4-6",
+      content: "y".repeat(2 * 1024 * 1024 + 17),
+      usage: { input_tokens: 11, output_tokens: 22 },
+    },
+  });
+
+  writeLines(path.join(projectsDir, "demo-project", "session.jsonl"), [
+    padding,
+    bigUsage,
+    usageLine({ id: "small", ts: "2026-03-14T10:00:01Z", input: 3, output: 4 }),
+  ]);
+
+  const stats = await scanTokenStats(
+    projectsDir,
+    path.join(tmpdir, "cache"),
+    new Date("2026-03-14T12:00:00Z"),
+  );
+
+  assert.equal(stats.all_tok, 40);
 });
