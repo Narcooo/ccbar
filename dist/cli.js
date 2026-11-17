@@ -8,8 +8,9 @@ import { DEFAULT_AUTO_COLUMNS, loadConfig } from "./config.js";
 import { doctorStatusline, repairStatusline, setupStatusline } from "./install.js";
 import { acquireRefreshLock, quotaCachePath, quotaLockPath, readQuotaCache, releaseRefreshLock, writeQuotaCache, } from "./quota-cache.js";
 import { isQuotaRefreshDue, refreshQuota, selectRenderableQuota } from "./quota.js";
-import { renderStatusline } from "./statusline.js";
+import { getModelName, renderStatusline } from "./statusline.js";
 import { scanTokenStats } from "./transcript.js";
+const RENDER_FLAGS = new Set(["--append-model"]);
 function createProcessIo() {
     return {
         readStdin: async () => {
@@ -88,7 +89,12 @@ export function resolveColumns(configuredColumns, runtime) {
     return readTtyColumns() ?? DEFAULT_AUTO_COLUMNS;
 }
 export async function main(argv = process.argv.slice(2), io = createProcessIo()) {
-    const command = argv[0] ?? "render";
+    const flags = argv.filter((argument) => argument.startsWith("--"));
+    const command = argv.find((argument) => !argument.startsWith("--")) ?? "render";
+    const unknownFlag = flags.find((flag) => !RENDER_FLAGS.has(flag));
+    if (unknownFlag) {
+        throw new Error(`ccbar: unknown option ${unknownFlag}`);
+    }
     if (command === "setup") {
         await setupStatusline();
         io.writeStdout("ccbar statusline configured\n");
@@ -141,7 +147,11 @@ export async function main(argv = process.argv.slice(2), io = createProcessIo())
         columns,
         config,
     });
-    for (const line of output.split("\n")) {
+    const lines = output.split("\n");
+    const firstLine = flags.includes("--append-model")
+        ? `${lines[0]} ${getModelName(input)}`
+        : lines[0];
+    for (const line of [firstLine, ...lines.slice(1)]) {
         io.writeStdout(`${line}\n`);
     }
 }

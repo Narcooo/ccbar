@@ -295,7 +295,7 @@ function shortenPath(input: string, maxLength = 25): string {
   return `${input.slice(0, maxLength - 1)}…`;
 }
 
-function getModelName(input: StatuslineInput): string {
+export function getModelName(input: StatuslineInput): string {
   if (typeof input.model === "string") {
     return input.model;
   }

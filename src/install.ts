@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type ClaudeSettings = Record<string, unknown> & {
   statusLine?: {
@@ -17,16 +18,18 @@ export const DEFAULT_SETTINGS_PATH = path.join(
   "settings.json",
 );
 
-export function buildPluginCommand(mode: "render" | "repair" | "doctor" = "render"): string {
-  const modeArg = mode === "render" ? "" : ` ${mode}`;
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
 
-  return [
-    "sh -lc '",
-    'PLUGIN_DIR=$(find "$HOME/.claude/plugins/cache" -mindepth 3 -maxdepth 3 -type d -path "*/ccbar/*" 2>/dev/null | sort | tail -n 1); ',
-    '[ -n "$PLUGIN_DIR" ] || exit 0; ',
-    `exec node "$PLUGIN_DIR/dist/cli.js"${modeArg}`,
-    "'",
-  ].join("");
+// The command Claude Code runs for every statusline update, so it has to be cheap: one
+// node process started on the absolute path of this install, no login shell and no search
+// of the plugin cache. The path changes when the plugin is updated into a new version
+// directory; the SessionStart hook runs `repair` from that directory, which rewrites it.
+export function buildPluginCommand(
+  cliPath: string = fileURLToPath(new URL("./cli.js", import.meta.url)),
+): string {
+  return `node ${shellQuote(cliPath)} --append-model`;
 }
 
 export function applyStatuslineSettings(

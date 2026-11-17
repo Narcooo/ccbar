@@ -16,7 +16,7 @@ import {
   writeQuotaCache,
 } from "./quota-cache.js";
 import { isQuotaRefreshDue, refreshQuota, selectRenderableQuota } from "./quota.js";
-import { renderStatusline } from "./statusline.js";
+import { getModelName, renderStatusline } from "./statusline.js";
 import { scanTokenStats } from "./transcript.js";
 
 type CliIo = {
@@ -24,6 +24,8 @@ type CliIo = {
   writeStdout: (value: string) => void;
   spawnQuotaRefresh: () => void;
 };
+
+const RENDER_FLAGS = new Set(["--append-model"]);
 
 function createProcessIo(): CliIo {
   return {
@@ -130,7 +132,12 @@ export async function main(
   argv: string[] = process.argv.slice(2),
   io: CliIo = createProcessIo(),
 ): Promise<void> {
-  const command = argv[0] ?? "render";
+  const flags = argv.filter((argument) => argument.startsWith("--"));
+  const command = argv.find((argument) => !argument.startsWith("--")) ?? "render";
+  const unknownFlag = flags.find((flag) => !RENDER_FLAGS.has(flag));
+  if (unknownFlag) {
+    throw new Error(`ccbar: unknown option ${unknownFlag}`);
+  }
 
   if (command === "setup") {
     await setupStatusline();
@@ -196,8 +203,12 @@ export async function main(
     columns,
     config,
   });
+  const lines = output.split("\n");
+  const firstLine = flags.includes("--append-model")
+    ? `${lines[0]} ${getModelName(input)}`
+    : lines[0];
 
-  for (const line of output.split("\n")) {
+  for (const line of [firstLine, ...lines.slice(1)]) {
     io.writeStdout(`${line}\n`);
   }
 }
