@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 - 2026-11-17
 
 - Fixed statusline renders taking seconds and gigabytes of memory on large transcript histories. Every render used to re-read and re-parse every `*.jsonl` under `~/.claude/projects` (measured: 3.8 GB in 1133 files, 7–9 s and 2.6 GB RSS per render). Token totals now come from an incremental index under `~/.cache/ccbar` (`CCBAR_CACHE_DIR` overrides the location): a render reads only the bytes appended since the previous one (40–70 ms and about 60 MB RSS on the same data), and the first render streams the files instead of loading them whole (2.6–3.4 s, about 200 MB RSS) and publishes its progress every half second, so a render that Claude Code cancels does not start over.
 - Totals are unchanged: the index keeps the same per-project dedupe by `message.id` (latest timestamp, then largest output, then scan order), stores token counts per quarter hour and model, and applies today/week/month boundaries and prices at render time. Files that shrink, are replaced, are rewritten in place or disappear are detected and rescanned; index updates are published atomically, so concurrent renders and renders cancelled by Claude Code cannot corrupt it. The cache directory is created private to the user (0700), like the transcripts it is derived from.
