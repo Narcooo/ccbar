@@ -1,21 +1,32 @@
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
-import path from "node:path";
 import { promisify } from "node:util";
 
 export type AuthMode = "oauth" | "api" | "unknown";
 
 export type RenderableQuota = Record<string, unknown>;
 
-export type QuotaCache = {
-  status: "ok" | "error";
+export type QuotaFetchResult = {
+  status: "ok";
   authMethod: string;
   tokenFingerprint: string;
   fetchedAt: number;
   quota: RenderableQuota;
 };
+
+// What the last background refresh found. The render only ever reads this.
+export type QuotaCache = {
+  authMode: AuthMode;
+  authCheckedAt: number;
+  tokenFingerprint: string;
+  attemptedAt: number;
+} & (
+  | { status: "ok"; fetchedAt: number; quota: RenderableQuota }
+  | { status: "error"; error: { code: string; message: string } }
+  // the auth mode is not a claude.ai subscription, so there is no quota to fetch
+  | { status: "not_applicable" }
+);
 
 type FetchQuota = () => Promise<RenderableQuota>;
 
@@ -27,8 +38,14 @@ type PollQuotaOptions = {
   maxAttempts?: number;
 };
 
+// A refresh is started when the last attempt (successful or not) is older than this.
 export const QUOTA_CACHE_TTL_MS = 30_000;
-export const QUOTA_CACHE_PATH = path.join(os.tmpdir(), "ccbar-quota.json");
+// The last fetched quota stays on screen while a refresh is pending, but never longer
+// than this: older numbers are shown as "--" rather than passed off as current.
+export const QUOTA_MAX_STALE_MS = 10 * 60_000;
+// `claude auth status` is re-run when its last result is older than this, or as soon as
+// the OAuth token changes.
+export const AUTH_MODE_TTL_MS = 5 * 60_000;
 export const QUOTA_API_ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 export const QUOTA_BETA_HEADER = "oauth-2025-04-20";
 
@@ -43,10 +60,8 @@ type ResolveAuthModeDeps = {
   readAuthStatus?: () => Promise<AuthStatus | null>;
 };
 
-type ResolveRenderableQuotaDeps = ResolveAuthModeDeps & {
+type RefreshQuotaDeps = ResolveAuthModeDeps & {
   readOauthToken?: () => Promise<string>;
-  readCache?: () => Promise<QuotaCache | null>;
-  writeCache?: (cache: QuotaCache) => Promise<void>;
   fetchQuota?: (token: string) => Promise<RenderableQuota>;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -87,41 +102,6 @@ async function readKeychainOauthToken(): Promise<string> {
   } catch {
     return "";
   }
-}
-
-async function readQuotaCache(cachePath: string = QUOTA_CACHE_PATH): Promise<QuotaCache | null> {
-  try {
-    const raw = await readFile(cachePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<QuotaCache>;
-
-    if (
-      parsed.status !== "ok" ||
-      typeof parsed.authMethod !== "string" ||
-      typeof parsed.tokenFingerprint !== "string" ||
-      typeof parsed.fetchedAt !== "number" ||
-      typeof parsed.quota !== "object" ||
-      parsed.quota == null
-    ) {
-      return null;
-    }
-
-    return {
-      status: parsed.status,
-      authMethod: parsed.authMethod,
-      tokenFingerprint: parsed.tokenFingerprint,
-      fetchedAt: parsed.fetchedAt,
-      quota: parsed.quota,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function writeQuotaCache(
-  cache: QuotaCache,
-  cachePath: string = QUOTA_CACHE_PATH,
-): Promise<void> {
-  await writeFile(`${cachePath}`, `${JSON.stringify(cache)}\n`, "utf8");
 }
 
 async function fetchQuotaFromApi(token: string): Promise<RenderableQuota> {
@@ -170,32 +150,22 @@ export async function resolveAuthMode(
 }
 
 export function selectRenderableQuota(
-  authMode: AuthMode,
-  fingerprint: string,
   cache: QuotaCache | null,
-  nowTs: number = Date.now(),
+  nowTs: number,
 ): RenderableQuota | null {
-  if (authMode !== "oauth" || !cache) {
+  if (!cache || cache.authMode !== "oauth" || cache.status !== "ok") {
     return null;
   }
 
-  if (cache.status !== "ok") {
-    return null;
-  }
-
-  if (cache.authMethod !== "claude.ai") {
-    return null;
-  }
-
-  if (cache.tokenFingerprint !== fingerprint) {
-    return null;
-  }
-
-  if (nowTs - cache.fetchedAt > QUOTA_CACHE_TTL_MS) {
+  if (nowTs - cache.fetchedAt > QUOTA_MAX_STALE_MS) {
     return null;
   }
 
   return cache.quota;
+}
+
+export function isQuotaRefreshDue(cache: QuotaCache | null, nowTs: number): boolean {
+  return cache === null || nowTs - cache.attemptedAt > QUOTA_CACHE_TTL_MS;
 }
 
 function isRateLimitError(error: unknown): boolean {
@@ -213,7 +183,7 @@ export async function pollQuotaWithRetry({
   sleep = async () => {},
   now = () => Date.now(),
   maxAttempts = 5,
-}: PollQuotaOptions): Promise<QuotaCache> {
+}: PollQuotaOptions): Promise<QuotaFetchResult> {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const quota = await fetchQuota();
@@ -236,44 +206,67 @@ export async function pollQuotaWithRetry({
   throw new Error("quota polling exhausted all attempts");
 }
 
-export async function resolveRenderableQuota(
-  deps: ResolveRenderableQuotaDeps = {},
-): Promise<RenderableQuota | null> {
-  const authMode = await resolveAuthMode({
-    readAuthStatus: deps.readAuthStatus,
+function describeFetchFailure(error: unknown): { code: string; message: string } {
+  const status =
+    typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+
+  return {
+    code: typeof status === "number" ? `quota_http_${status}` : "quota_fetch_failed",
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function sleepFor(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
+}
 
-  if (authMode !== "oauth") {
-    return null;
-  }
-
-  const token = await (deps.readOauthToken ?? readKeychainOauthToken)();
-  if (!token) {
-    return null;
-  }
-
+// The slow part of quota display: resolve the auth mode, read the OAuth token and call the
+// usage API. It runs in a detached process started by a render, never in the render itself.
+// Every outcome, including a failure, becomes the next cache content.
+export async function refreshQuota(
+  previous: QuotaCache | null,
+  deps: RefreshQuotaDeps = {},
+): Promise<QuotaCache> {
   const now = deps.now ?? (() => Date.now());
-  const cachedQuota = selectRenderableQuota(
-    authMode,
-    tokenFingerprint(token),
-    await (deps.readCache ?? readQuotaCache)(),
-    now(),
-  );
-  if (cachedQuota) {
-    return cachedQuota;
+  const attemptedAt = now();
+  const token = await (deps.readOauthToken ?? readKeychainOauthToken)();
+  const fingerprint = tokenFingerprint(token);
+  const authIsFresh =
+    previous !== null &&
+    previous.tokenFingerprint === fingerprint &&
+    attemptedAt - previous.authCheckedAt <= AUTH_MODE_TTL_MS;
+  const attempt = {
+    authMode: authIsFresh
+      ? previous.authMode
+      : await resolveAuthMode({ readAuthStatus: deps.readAuthStatus }),
+    authCheckedAt: authIsFresh ? previous.authCheckedAt : attemptedAt,
+    tokenFingerprint: fingerprint,
+    attemptedAt,
+  };
+
+  if (attempt.authMode !== "oauth") {
+    return { ...attempt, status: "not_applicable" };
+  }
+
+  if (!token) {
+    return {
+      ...attempt,
+      status: "error",
+      error: { code: "oauth_token_missing", message: "no Claude Code OAuth token found" },
+    };
   }
 
   try {
-    const cacheEntry = await pollQuotaWithRetry({
+    const fetched = await pollQuotaWithRetry({
       token,
-      fetchQuota: async () =>
-        await (deps.fetchQuota ?? fetchQuotaFromApi)(token),
-      sleep: deps.sleep,
+      fetchQuota: async () => await (deps.fetchQuota ?? fetchQuotaFromApi)(token),
+      sleep: deps.sleep ?? sleepFor,
       now,
     });
-    await (deps.writeCache ?? writeQuotaCache)(cacheEntry);
-    return cacheEntry.quota;
-  } catch {
-    return null;
+    return { ...attempt, status: "ok", fetchedAt: fetched.fetchedAt, quota: fetched.quota };
+  } catch (error) {
+    return { ...attempt, status: "error", error: describeFetchFailure(error) };
   }
 }

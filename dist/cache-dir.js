@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 export class CacheCorruptError extends Error {
@@ -9,6 +11,14 @@ export const PRIVATE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
 export function resolveCacheDir(env = process.env) {
     return env.CCBAR_CACHE_DIR ?? path.join(os.homedir(), ".cache", "ccbar");
+}
+// Several renders can run at once, so readers must never see a half-written file.
+export function writeFileAtomic(filePath, content) {
+    const directory = path.dirname(filePath);
+    const temporaryPath = path.join(directory, `.${path.basename(filePath)}.${randomBytes(6).toString("hex")}.tmp`);
+    mkdirSync(directory, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    writeFileSync(temporaryPath, content, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
+    renameSync(temporaryPath, filePath);
 }
 // Cache files are written only by ccbar, always atomically; content that does not parse
 // means the file was damaged, which is reported rather than silently rebuilt.

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,13 +7,22 @@ import { fileURLToPath } from "node:url";
 import { resolveCacheDir } from "./cache-dir.js";
 import { DEFAULT_AUTO_COLUMNS, loadConfig } from "./config.js";
 import { doctorStatusline, repairStatusline, setupStatusline } from "./install.js";
-import { resolveRenderableQuota } from "./quota.js";
+import {
+  acquireRefreshLock,
+  quotaCachePath,
+  quotaLockPath,
+  readQuotaCache,
+  releaseRefreshLock,
+  writeQuotaCache,
+} from "./quota-cache.js";
+import { isQuotaRefreshDue, refreshQuota, selectRenderableQuota } from "./quota.js";
 import { renderStatusline } from "./statusline.js";
 import { scanTokenStats } from "./transcript.js";
 
 type CliIo = {
   readStdin: () => Promise<string>;
   writeStdout: (value: string) => void;
+  spawnQuotaRefresh: () => void;
 };
 
 function createProcessIo(): CliIo {
@@ -27,6 +36,14 @@ function createProcessIo(): CliIo {
     },
     writeStdout: (value: string) => {
       process.stdout.write(value);
+    },
+    // The quota fetch (auth check, keychain, network) runs in its own process, detached so
+    // that it survives this render exiting or being cancelled.
+    spawnQuotaRefresh: () => {
+      spawn(process.execPath, [fileURLToPath(import.meta.url), "refresh-quota"], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
     },
   };
 }
@@ -135,6 +152,17 @@ export async function main(
     return;
   }
 
+  const cacheDir = resolveCacheDir();
+  const quotaPath = quotaCachePath(cacheDir);
+  const quotaLock = quotaLockPath(cacheDir);
+
+  if (command === "refresh-quota") {
+    // If this throws, the lock is left to expire, which spaces out the retries.
+    writeQuotaCache(quotaPath, await refreshQuota(readQuotaCache(quotaPath)));
+    releaseRefreshLock(quotaLock);
+    return;
+  }
+
   const rawInput = await io.readStdin();
   if (!rawInput.trim()) {
     io.writeStdout("");
@@ -145,8 +173,22 @@ export async function main(
   const config = await loadConfig(process.env.CCBAR_CONFIG_PATH);
   const projectsDir =
     process.env.CCBAR_PROJECTS_DIR ?? path.join(os.homedir(), ".claude", "projects");
-  const tokens = await scanTokenStats(projectsDir, resolveCacheDir());
-  const quota = await resolveRenderableQuota();
+
+  // The render never waits for auth or the network. When the stored quota is due for
+  // renewal it starts a background refresh, and it shows whatever the last refresh stored.
+  // The refresh is started before the transcript scan so that it also makes progress
+  // during a long first scan, or when Claude Code cancels this render.
+  const startedAt = Date.now();
+  if (
+    isQuotaRefreshDue(readQuotaCache(quotaPath), startedAt) &&
+    acquireRefreshLock(quotaLock, startedAt)
+  ) {
+    io.spawnQuotaRefresh();
+  }
+
+  const tokens = await scanTokenStats(projectsDir, cacheDir);
+  const quota = selectRenderableQuota(readQuotaCache(quotaPath), Date.now());
+
   const columns = resolveColumns(config.columns);
   const output = renderStatusline(input, {
     tokens,

@@ -1,11 +1,15 @@
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
-import path from "node:path";
 import { promisify } from "node:util";
+// A refresh is started when the last attempt (successful or not) is older than this.
 export const QUOTA_CACHE_TTL_MS = 30_000;
-export const QUOTA_CACHE_PATH = path.join(os.tmpdir(), "ccbar-quota.json");
+// The last fetched quota stays on screen while a refresh is pending, but never longer
+// than this: older numbers are shown as "--" rather than passed off as current.
+export const QUOTA_MAX_STALE_MS = 10 * 60_000;
+// `claude auth status` is re-run when its last result is older than this, or as soon as
+// the OAuth token changes.
+export const AUTH_MODE_TTL_MS = 5 * 60_000;
 export const QUOTA_API_ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 export const QUOTA_BETA_HEADER = "oauth-2025-04-20";
 const execFileAsync = promisify(execFile);
@@ -34,33 +38,6 @@ async function readKeychainOauthToken() {
     catch {
         return "";
     }
-}
-async function readQuotaCache(cachePath = QUOTA_CACHE_PATH) {
-    try {
-        const raw = await readFile(cachePath, "utf8");
-        const parsed = JSON.parse(raw);
-        if (parsed.status !== "ok" ||
-            typeof parsed.authMethod !== "string" ||
-            typeof parsed.tokenFingerprint !== "string" ||
-            typeof parsed.fetchedAt !== "number" ||
-            typeof parsed.quota !== "object" ||
-            parsed.quota == null) {
-            return null;
-        }
-        return {
-            status: parsed.status,
-            authMethod: parsed.authMethod,
-            tokenFingerprint: parsed.tokenFingerprint,
-            fetchedAt: parsed.fetchedAt,
-            quota: parsed.quota,
-        };
-    }
-    catch {
-        return null;
-    }
-}
-async function writeQuotaCache(cache, cachePath = QUOTA_CACHE_PATH) {
-    await writeFile(`${cachePath}`, `${JSON.stringify(cache)}\n`, "utf8");
 }
 async function fetchQuotaFromApi(token) {
     const response = await fetch(QUOTA_API_ENDPOINT, {
@@ -94,23 +71,17 @@ export async function resolveAuthMode(deps = {}) {
     }
     return "unknown";
 }
-export function selectRenderableQuota(authMode, fingerprint, cache, nowTs = Date.now()) {
-    if (authMode !== "oauth" || !cache) {
+export function selectRenderableQuota(cache, nowTs) {
+    if (!cache || cache.authMode !== "oauth" || cache.status !== "ok") {
         return null;
     }
-    if (cache.status !== "ok") {
-        return null;
-    }
-    if (cache.authMethod !== "claude.ai") {
-        return null;
-    }
-    if (cache.tokenFingerprint !== fingerprint) {
-        return null;
-    }
-    if (nowTs - cache.fetchedAt > QUOTA_CACHE_TTL_MS) {
+    if (nowTs - cache.fetchedAt > QUOTA_MAX_STALE_MS) {
         return null;
     }
     return cache.quota;
+}
+export function isQuotaRefreshDue(cache, nowTs) {
+    return cache === null || nowTs - cache.attemptedAt > QUOTA_CACHE_TTL_MS;
 }
 function isRateLimitError(error) {
     return (typeof error === "object" &&
@@ -139,33 +110,57 @@ export async function pollQuotaWithRetry({ token, fetchQuota, sleep = async () =
     }
     throw new Error("quota polling exhausted all attempts");
 }
-export async function resolveRenderableQuota(deps = {}) {
-    const authMode = await resolveAuthMode({
-        readAuthStatus: deps.readAuthStatus,
+function describeFetchFailure(error) {
+    const status = typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+    return {
+        code: typeof status === "number" ? `quota_http_${status}` : "quota_fetch_failed",
+        message: error instanceof Error ? error.message : String(error),
+    };
+}
+function sleepFor(ms) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
     });
-    if (authMode !== "oauth") {
-        return null;
-    }
-    const token = await (deps.readOauthToken ?? readKeychainOauthToken)();
-    if (!token) {
-        return null;
-    }
+}
+// The slow part of quota display: resolve the auth mode, read the OAuth token and call the
+// usage API. It runs in a detached process started by a render, never in the render itself.
+// Every outcome, including a failure, becomes the next cache content.
+export async function refreshQuota(previous, deps = {}) {
     const now = deps.now ?? (() => Date.now());
-    const cachedQuota = selectRenderableQuota(authMode, tokenFingerprint(token), await (deps.readCache ?? readQuotaCache)(), now());
-    if (cachedQuota) {
-        return cachedQuota;
+    const attemptedAt = now();
+    const token = await (deps.readOauthToken ?? readKeychainOauthToken)();
+    const fingerprint = tokenFingerprint(token);
+    const authIsFresh = previous !== null &&
+        previous.tokenFingerprint === fingerprint &&
+        attemptedAt - previous.authCheckedAt <= AUTH_MODE_TTL_MS;
+    const attempt = {
+        authMode: authIsFresh
+            ? previous.authMode
+            : await resolveAuthMode({ readAuthStatus: deps.readAuthStatus }),
+        authCheckedAt: authIsFresh ? previous.authCheckedAt : attemptedAt,
+        tokenFingerprint: fingerprint,
+        attemptedAt,
+    };
+    if (attempt.authMode !== "oauth") {
+        return { ...attempt, status: "not_applicable" };
+    }
+    if (!token) {
+        return {
+            ...attempt,
+            status: "error",
+            error: { code: "oauth_token_missing", message: "no Claude Code OAuth token found" },
+        };
     }
     try {
-        const cacheEntry = await pollQuotaWithRetry({
+        const fetched = await pollQuotaWithRetry({
             token,
             fetchQuota: async () => await (deps.fetchQuota ?? fetchQuotaFromApi)(token),
-            sleep: deps.sleep,
+            sleep: deps.sleep ?? sleepFor,
             now,
         });
-        await (deps.writeCache ?? writeQuotaCache)(cacheEntry);
-        return cacheEntry.quota;
+        return { ...attempt, status: "ok", fetchedAt: fetched.fetchedAt, quota: fetched.quota };
     }
-    catch {
-        return null;
+    catch (error) {
+        return { ...attempt, status: "error", error: describeFetchFailure(error) };
     }
 }
