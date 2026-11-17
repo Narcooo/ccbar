@@ -3,7 +3,12 @@ import { linkSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, 
 import path from "node:path";
 import { PRIVATE_DIRECTORY_MODE, PRIVATE_FILE_MODE, parseCacheJson } from "./cache-dir.js";
 export class StaleStateError extends Error {
+    filePath;
     code = "CCBAR_STALE_STATE";
+    constructor(filePath, cause) {
+        super(`transcript shard ${filePath} was superseded`, { cause });
+        this.filePath = filePath;
+    }
 }
 const LAYOUT_VERSION = 1;
 // index files are never overwritten: every write creates a file under a new name
@@ -63,7 +68,7 @@ export function readShard(indexDir, fileName) {
     }
     catch (error) {
         if (isMissing(error)) {
-            throw new StaleStateError(`transcript shard ${shardPath} was superseded`, { cause: error });
+            throw new StaleStateError(shardPath, error);
         }
         throw error;
     }
@@ -137,4 +142,11 @@ export function commitState(indexDir, baseGeneration, state, dirtyShards) {
     }
     collectSuperseded(indexDir, entries, generation, published);
     return published;
+}
+// Publishes an empty state on top of whatever is there. Every existing state and shard
+// file is thereby superseded and collected, and the next update reads the transcripts
+// from the start, as on a first run. If another process publishes first, its state stands.
+export function discardIndex(indexDir) {
+    const newest = Math.max(0, ...publishedGenerations(readdirSync(indexDir)));
+    commitState(indexDir, newest, emptyState(), new Map());
 }

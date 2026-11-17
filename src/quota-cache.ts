@@ -1,7 +1,14 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { PRIVATE_DIRECTORY_MODE, PRIVATE_FILE_MODE, parseCacheJson, writeFileAtomic } from "./cache-dir.js";
+import {
+  CacheCorruptError,
+  PRIVATE_DIRECTORY_MODE,
+  PRIVATE_FILE_MODE,
+  parseCacheJson,
+  recordRebuild,
+  writeFileAtomic,
+} from "./cache-dir.js";
 import type { QuotaCache } from "./quota.js";
 
 // A refresh runs `claude auth status` (5 s timeout) and up to five quota requests (5 s
@@ -28,10 +35,25 @@ function readIfPresent(filePath: string): string | null {
   }
 }
 
+// A damaged quota cache is recorded and removed. The caller then sees no cache at all,
+// which is the state of a first run: the render shows "--" and starts a refresh.
 export function readQuotaCache(cachePath: string): QuotaCache | null {
   const content = readIfPresent(cachePath);
+  if (content === null) {
+    return null;
+  }
 
-  return content === null ? null : (parseCacheJson(cachePath, content) as QuotaCache);
+  try {
+    return parseCacheJson(cachePath, content) as QuotaCache;
+  } catch (error) {
+    if (!(error instanceof CacheCorruptError)) {
+      throw error;
+    }
+
+    recordRebuild(path.dirname(cachePath), error);
+    rmSync(cachePath, { force: true });
+    return null;
+  }
 }
 
 export function writeQuotaCache(cachePath: string, cache: QuotaCache): void {

@@ -1,6 +1,13 @@
+import { CacheCorruptError, recordRebuild } from "./cache-dir.js";
 import { estimateCost } from "./pricing.js";
-import { updateTranscriptIndex } from "./transcript-index.js";
-import { TIME_SLOT_MS, resolveIndexDir, type IndexState, type TokenRow } from "./transcript-store.js";
+import { updateTranscriptIndex, type UpdateResult } from "./transcript-index.js";
+import {
+  TIME_SLOT_MS,
+  discardIndex,
+  resolveIndexDir,
+  type IndexState,
+  type TokenRow,
+} from "./transcript-store.js";
 
 type StatsBucket = {
   today_tok: number;
@@ -156,6 +163,25 @@ function summarize(state: IndexState, projectNames: string[], now: Date): TokenS
   return { ...total, projects };
 }
 
+// Brings the index up to date. A damaged index file is recorded, the index is discarded
+// and built again from the transcripts, exactly as on a first run. Only one rebuild is
+// attempted: if the fresh index is damaged too, the error surfaces.
+function updateIndex(projectsDir: string, cacheDir: string): UpdateResult {
+  const indexDir = resolveIndexDir(cacheDir, projectsDir);
+
+  try {
+    return updateTranscriptIndex(projectsDir, indexDir);
+  } catch (error) {
+    if (!(error instanceof CacheCorruptError)) {
+      throw error;
+    }
+
+    recordRebuild(cacheDir, error);
+    discardIndex(indexDir);
+    return updateTranscriptIndex(projectsDir, indexDir);
+  }
+}
+
 // Token and cost totals over every transcript under `projectsDir`. Only bytes appended
 // since the previous call are read; everything else comes from the index in `cacheDir`.
 export async function scanTokenStats(
@@ -163,7 +189,7 @@ export async function scanTokenStats(
   cacheDir: string,
   now: Date = new Date(),
 ): Promise<TokenStats> {
-  const { state, projectNames } = updateTranscriptIndex(projectsDir, resolveIndexDir(cacheDir, projectsDir));
+  const { state, projectNames } = updateIndex(projectsDir, cacheDir);
 
   return summarize(state, projectNames, now);
 }

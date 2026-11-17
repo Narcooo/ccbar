@@ -193,10 +193,7 @@ export function updateTranscriptIndex(
       // A shard disappears when a newer generation replaces it. If no newer generation
       // exists, the newest state points at a file that is gone.
       if (generation === staleGeneration) {
-        throw new CacheCorruptError(
-          `ccbar transcript index is missing a shard of generation ${generation} (delete ${indexDir} to rebuild it)`,
-          { cause: error },
-        );
+        throw new CacheCorruptError(error.filePath, error.cause);
       }
       staleGeneration = generation;
     }

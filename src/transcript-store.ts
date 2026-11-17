@@ -62,6 +62,13 @@ export type IndexState = {
 
 export class StaleStateError extends Error {
   readonly code = "CCBAR_STALE_STATE";
+
+  constructor(
+    readonly filePath: string,
+    cause: unknown,
+  ) {
+    super(`transcript shard ${filePath} was superseded`, { cause });
+  }
 }
 
 const LAYOUT_VERSION = 1;
@@ -133,7 +140,7 @@ export function readShard(indexDir: string, fileName: string): Shard {
     content = readFileSync(shardPath, "utf8");
   } catch (error) {
     if (isMissing(error)) {
-      throw new StaleStateError(`transcript shard ${shardPath} was superseded`, { cause: error });
+      throw new StaleStateError(shardPath, error);
     }
     throw error;
   }
@@ -237,4 +244,13 @@ export function commitState(
 
   collectSuperseded(indexDir, entries, generation, published);
   return published;
+}
+
+// Publishes an empty state on top of whatever is there. Every existing state and shard
+// file is thereby superseded and collected, and the next update reads the transcripts
+// from the start, as on a first run. If another process publishes first, its state stands.
+export function discardIndex(indexDir: string): void {
+  const newest = Math.max(0, ...publishedGenerations(readdirSync(indexDir)));
+
+  commitState(indexDir, newest, emptyState(), new Map());
 }
