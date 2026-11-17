@@ -1,7 +1,8 @@
-import { spawn, spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { openSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import tty from "node:tty";
 import { fileURLToPath } from "node:url";
 import { resolveCacheDir } from "./cache-dir.js";
 import { DEFAULT_AUTO_COLUMNS, loadConfig } from "./config.js";
@@ -57,17 +58,25 @@ function parsePositiveInteger(value) {
     }
     return null;
 }
+// Claude Code captures stdout, so the width is only available from COLUMNS (which current
+// versions set) or from the controlling terminal itself.
 function readTtyColumns() {
-    const result = spawnSync("sh", ["-lc", "stty size </dev/tty 2>/dev/null || tput cols </dev/tty 2>/dev/null"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 250,
-    });
-    if (result.error || result.status !== 0) {
-        return null;
+    let fd;
+    try {
+        fd = openSync("/dev/tty", "r+");
     }
-    const parts = result.stdout.trim().split(/\s+/);
-    return parsePositiveInteger(parts.at(-1));
+    catch (error) {
+        // ENXIO: this process has no controlling terminal. ENOENT: the platform has no /dev/tty.
+        const code = error.code;
+        if (code === "ENXIO" || code === "ENOENT") {
+            return null;
+        }
+        throw error;
+    }
+    const terminal = new tty.WriteStream(fd);
+    const columns = parsePositiveInteger(terminal.columns);
+    terminal.destroy();
+    return columns;
 }
 export function resolveColumns(configuredColumns, runtime) {
     const configured = parsePositiveInteger(configuredColumns);
