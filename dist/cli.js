@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveCacheDir } from "./cache-dir.js";
 import { DEFAULT_AUTO_COLUMNS, loadConfig } from "./config.js";
 import { doctorStatusline, repairStatusline, setupStatusline } from "./install.js";
 import { resolveRenderableQuota } from "./quota.js";
@@ -104,7 +105,7 @@ export async function main(argv = process.argv.slice(2), io = createProcessIo())
     const input = JSON.parse(rawInput);
     const config = await loadConfig(process.env.CCBAR_CONFIG_PATH);
     const projectsDir = process.env.CCBAR_PROJECTS_DIR ?? path.join(os.homedir(), ".claude", "projects");
-    const tokens = await scanTokenStats(projectsDir);
+    const tokens = await scanTokenStats(projectsDir, resolveCacheDir());
     const quota = await resolveRenderableQuota();
     const columns = resolveColumns(config.columns);
     const output = renderStatusline(input, {
