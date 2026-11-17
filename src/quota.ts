@@ -71,7 +71,12 @@ async function readKeychainOauthToken(): Promise<string> {
   try {
     const { stdout } = await execFileAsync(
       "security",
-      ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
+      ["find-generic-password", "-s", "Claude Code-credentials", "-a", os.userInfo().username, "-w"],
+      {
+        // a locked keychain makes `security` wait for an unlock prompt that may never be
+        // answered
+        timeout: 5_000,
+      },
     );
     const parsed = JSON.parse(stdout.trim()) as {
       claudeAiOauth?: {
