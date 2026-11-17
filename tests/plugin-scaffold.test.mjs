@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 test("plugin scaffold files exist", () => {
@@ -35,11 +35,15 @@ test("plugin runtime build artifacts are tracked for marketplace installs", () =
     .split("\n")
     .filter(Boolean);
 
-  assert.equal(trackedFiles.includes("dist/cli.js"), true);
-  assert.equal(trackedFiles.includes("dist/config.js"), true);
-  assert.equal(trackedFiles.includes("dist/install.js"), true);
-  assert.equal(trackedFiles.includes("dist/pricing.js"), true);
-  assert.equal(trackedFiles.includes("dist/quota.js"), true);
-  assert.equal(trackedFiles.includes("dist/statusline.js"), true);
-  assert.equal(trackedFiles.includes("dist/transcript.js"), true);
+  // every module the runtime loads has to ship with the plugin
+  const runtimeFiles = readdirSync("dist")
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => `dist/${name}`);
+
+  assert.equal(runtimeFiles.includes("dist/cli.js"), true);
+  assert.deepEqual(
+    runtimeFiles.filter((file) => !trackedFiles.includes(file)),
+    [],
+    "dist modules missing from git (run `git add dist`)",
+  );
 });

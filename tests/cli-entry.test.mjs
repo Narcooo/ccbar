@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { DEFAULT_AUTO_COLUMNS } from "../dist/config.js";
-import { isDirectExecution, resolveColumns } from "../dist/cli.js";
+import { isDirectExecution, main, resolveColumns } from "../dist/cli.js";
 
 test("isDirectExecution treats /tmp and /private/tmp as the same file", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "ccbar-cli-entry-"));
@@ -48,4 +48,14 @@ test("resolveColumns falls back to tty width when stdout and env widths are unav
     }),
     132,
   );
+});
+
+test("main rejects unknown options instead of ignoring them", async () => {
+  const io = {
+    readStdin: async () => "",
+    writeStdout: () => {},
+    spawnQuotaRefresh: () => {},
+  };
+
+  await assert.rejects(main(["--bogus"], io), /unknown option --bogus/);
 });

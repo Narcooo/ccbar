@@ -205,11 +205,14 @@ test("main reads Claude stdin JSON and writes rendered statusline", async () => 
     },
   };
   const writes = [];
+  const refreshes = [];
   const previousProjectsDir = process.env.CCBAR_PROJECTS_DIR;
+  const previousCacheDir = process.env.CCBAR_CACHE_DIR;
 
   await mkdir(projectDir, { recursive: true });
   await writeFile(path.join(projectDir, "session.jsonl"), `${JSON.stringify(entry)}\n`, "utf8");
   process.env.CCBAR_PROJECTS_DIR = tmpdir;
+  process.env.CCBAR_CACHE_DIR = `${tmpdir}-cache`;
 
   try {
     await main(
@@ -219,16 +222,27 @@ test("main reads Claude stdin JSON and writes rendered statusline", async () => 
         writeStdout: (value) => {
           writes.push(value);
         },
+        spawnQuotaRefresh: () => {
+          refreshes.push("refresh");
+        },
       },
     );
   } finally {
-    if (previousProjectsDir == null) {
-      delete process.env.CCBAR_PROJECTS_DIR;
-    } else {
-      process.env.CCBAR_PROJECTS_DIR = previousProjectsDir;
+    for (const [name, previous] of [
+      ["CCBAR_PROJECTS_DIR", previousProjectsDir],
+      ["CCBAR_CACHE_DIR", previousCacheDir],
+    ]) {
+      if (previous == null) {
+        delete process.env[name];
+      } else {
+        process.env[name] = previous;
+      }
     }
   }
 
+  // no quota cache yet: the render shows "--" and hands the fetch to a background refresh
+  assert.deepEqual(refreshes, ["refresh"]);
+  assert.equal(writes[0].includes("--"), true);
   assert.equal(writes.length, 2);
   assert.equal(writes[0].includes("5h"), true);
   assert.equal(writes[0].endsWith("\n"), true);
