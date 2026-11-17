@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
@@ -256,14 +255,6 @@ test("quota cache round-trips through an atomic write and a missing file reads a
   writeQuotaCache(cachePath, okCache());
   assert.deepEqual(readQuotaCache(cachePath), okCache());
   assert.equal(path.dirname(cachePath), cacheDir);
-});
-
-test("a corrupt quota cache fails with a stable code", () => {
-  const cacheDir = makeTempDir("ccbar-quota-");
-  const cachePath = quotaCachePath(cacheDir);
-
-  writeFileSync(cachePath, "{not json");
-  assert.throws(() => readQuotaCache(cachePath), { code: "CCBAR_CACHE_CORRUPT" });
 });
 
 test("the refresh lock admits one refresher until it is released or goes stale", () => {

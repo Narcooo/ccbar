@@ -131,11 +131,14 @@ test("reading a shard that was superseded reports a stale state", () => {
   assert.throws(() => readShard(indexDir, "0a.1.1.json"), { code: "CCBAR_STALE_STATE" });
 });
 
-test("a corrupt state file fails with a stable code instead of being ignored", () => {
+test("a corrupt state file is reported with a stable code and the file it came from", () => {
   const indexDir = newIndexDir();
   commitState(indexDir, 0, loadLatestState(indexDir).state, new Map());
   rmSync(path.join(indexDir, "state-1.json"));
   writeFileSync(path.join(indexDir, "state-1.json"), '{"files": {');
 
-  assert.throws(() => loadLatestState(indexDir), { code: "CCBAR_CACHE_CORRUPT" });
+  assert.throws(() => loadLatestState(indexDir), {
+    code: "CCBAR_CACHE_CORRUPT",
+    filePath: path.join(indexDir, "state-1.json"),
+  });
 });
