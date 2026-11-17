@@ -148,10 +148,12 @@ The plugin stores config under `~/.claude/plugins/ccbar/config.json`.
 ## How it works
 
 ```
-stdin JSON → plugin runtime → scan ~/.claude/projects/**/*.jsonl
-           → dedup by message.id → per-model pricing
+stdin JSON → plugin runtime → read new bytes of ~/.claude/projects/**/*.jsonl
+           → dedup by message.id (index in ~/.cache/ccbar) → per-model pricing
            → adaptive layout → stdout
 ```
+
+Token totals live in an incremental index under `~/.cache/ccbar` (override with `CCBAR_CACHE_DIR`), so a render only reads what was appended since the previous one. The index is derived data: delete the directory at any time and the next render rebuilds it. A damaged cache file is discarded and rebuilt the same way, and each such rebuild is recorded in `~/.cache/ccbar/rebuild.log`. Quota is fetched by a short-lived background process at most every 30 seconds; the statusline itself never waits for the network.
 
 Plugin commands:
 - `/ccbar:setup` wires `statusLine.command`

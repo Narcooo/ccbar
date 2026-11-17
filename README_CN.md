@@ -148,10 +148,12 @@ ccbar 现在是基于 Node.js/TypeScript 的原生 Claude Code 插件。不再�
 ## 工作原理
 
 ```
-stdin JSON → 插件运行时 → 扫描 ~/.claude/projects/**/*.jsonl
-           → 按 message.id 去重 → 按模型定价
+stdin JSON → 插件运行时 → 读取 ~/.claude/projects/**/*.jsonl 的新增字节
+           → 按 message.id 去重（索引在 ~/.cache/ccbar）→ 按模型定价
            → 自适应布局 → stdout
 ```
+
+Token 累计保存在 `~/.cache/ccbar` 下的增量索引里（可用 `CCBAR_CACHE_DIR` 改位置），每次渲染只读上次之后追加的内容。索引是派生数据：随时可以删掉整个目录，下次渲染会重建。缓存文件损坏时也会自动丢弃并重建，每次重建都会记到 `~/.cache/ccbar/rebuild.log`。配额由一个短命的后台进程拉取，最多每 30 秒一次；状态栏本身从不等待网络。
 
 插件命令：
 - `/ccbar:setup` 接管 `statusLine.command`
